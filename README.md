@@ -26,9 +26,14 @@ graph TB
     end
 
     subgraph 检索管线
-        TN -->|1. 向量检索| VS[(Chroma<br/>向量数据库)]
+        TN -->|1. 向量检索| VS[(Chroma<br/>持久化)]
         VS -->|top 8| RR[CrossEncoder<br/>重排 top 5]
         RR -->|格式化片段| TN
+    end
+
+    subgraph 本地模型-进程内
+        VS -.->|HuggingFaceEmbeddings| BGE[BAAI/bge-base-zh-v1.5]
+        RR -.->|HuggingFaceCrossEncoder| RERANK[BAAI/bge-reranker-base]
     end
 
     subgraph 知识构建-离线
@@ -39,8 +44,6 @@ graph TB
 
     subgraph 外部依赖
         CB -->|ChatOpenAI| DS[DeepSeek API]
-        VS -->|HuggingFaceEmbeddings| BGE[BAAI/bge-base-zh-v1.5]
-        RR -->|HuggingFaceCrossEncoder| RERANK[BAAI/bge-reranker-base]
     end
 ```
 
@@ -79,7 +82,7 @@ stateDiagram-v2
 | 组件 | 选型 | 说明 |
 |------|------|------|
 | Agent 框架 | LangGraph | 显式状态图、条件分支可控、便于调试和白板讲解 |
-| 向量数据库 | Chroma (C/S 模式) | 持久化存储、支持元数据过滤、与 LangChain 深度集成 |
+| 向量数据库 | Chroma (持久化模式) | 嵌入式运行、无需独立服务、支持元数据过滤、与 LangChain 深度集成 |
 | Embedding | BAAI/bge-base-zh-v1.5 | 中文语义理解优秀、本地部署零成本、C-MTEB 排名领先 |
 | 重排序 | CrossEncoder (bge-reranker-base) | 对 top 8 向量结果二次精排到 top 5，提升检索精度 |
 | 大模型 | DeepSeek | 中文能力强、成本低、支持 function calling |
@@ -96,7 +99,7 @@ pamu_assist/
 │   │   └── Agentic_RAG.py       # LangGraph 三节点工作流定义
 │   ├── models/
 │   │   ├── llm.py               # DeepSeek 大模型实例
-│   │   └── chroma.py            # Chroma 向量库 + BGE Embedding
+│   │   └── chroma.py            # Chroma 持久化向量库 + BGE Embedding
 │   ├── tools/
 │   │   └── rag_tool.py          # 检索工具：向量检索 + CrossEncoder 重排
 │   ├── prompts/
@@ -114,6 +117,7 @@ pamu_assist/
 │       └── index.html           # 前端聊天界面
 ├── data/
 │   └── json/                    # Wiki 原始 JSON 数据
+├── chroma_data/                 # Chroma 持久化向量库
 └── crawler/
     └── json_to_md.py            # Wiki JSON → Markdown 转换
 ```
@@ -123,7 +127,6 @@ pamu_assist/
 ### 环境要求
 
 - Python 3.10+
-- Chroma 向量数据库（需单独启动）
 - DeepSeek API Key
 
 ### 安装
@@ -144,14 +147,11 @@ cp .env.example .env
 cd crawler
 python json_to_md.py
 
-# 5. 启动 Chroma 服务
-docker run -d -p 8082:8000 chromadb/chroma
-
-# 6. 入库知识数据
+# 5. 入库知识数据
 cd ../src/data_loader
 python data_ingestion.py
 
-# 7. 启动服务
+# 6. 启动服务
 cd ../..
 python main.py
 # 访问 http://localhost:426/static/index.html
