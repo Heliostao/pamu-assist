@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameLore RAG — 星穹铁道知识向导</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500&family=JetBrains+Mono&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #cc785c;
+            --primary-active: #a9583e;
+            --canvas: #faf9f5;
+            --surface-card: #efe9de;
+            --surface-dark: #181715;
+            --surface-dark-elevated: #252320;
+            --ink: #141413;
+            --body: #3d3d3a;
+            --muted: #6c6a64;
+            --muted-soft: #8e8b82;
+            --hairline: #e6dfd8;
+            --on-primary: #ffffff;
+            --on-dark: #faf9f5;
+            --on-dark-soft: #a09d96;
+            --serif: 'Cormorant Garamond', 'Tiempos Headline', 'EB Garamond', Garamond, 'Times New Roman', serif;
+            --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--sans);
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.55;
+            color: var(--body);
+            background: var(--canvas);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ── */
+        header {
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            border-bottom: 1px solid var(--hairline);
+            flex-shrink: 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-mark {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .brand-mark svg { width: 100%; height: 100%; }
+
+        .brand-name {
+            font-family: var(--serif);
+            font-size: 22px;
+            font-weight: 400;
+            letter-spacing: -0.3px;
+            color: var(--ink);
+        }
+
+        .brand-badge {
+            font-family: var(--sans);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--on-primary);
+            background: var(--primary);
+            border-radius: 9999px;
+            padding: 3px 10px;
+        }
+
+        /* ── Main chat area ── */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 720px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 0 24px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 0 0;
+        }
+
+        .empty-state h1 {
+            font-family: var(--serif);
+            font-size: 36px;
+            font-weight: 400;
+            letter-spacing: -0.5px;
+            line-height: 1.15;
+            color: var(--ink);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0;
+            overflow: hidden;
+        }
+
+        .greeting-left, .greeting-right {
+            display: inline-block;
+        }
+
+        @keyframes slideFromLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes slideFromRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .animate-greeting .greeting-left {
+            animation: slideFromLeft 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        }
+
+        .animate-greeting .greeting-right {
+            animation: slideFromRight 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s forwards;
+            opacity: 0;
+        }
+
+        .empty-state p {
+            font-size: 16px;
+            color: var(--muted);
+            max-width: 400px;
+            margin: 0 auto 32px;
+            opacity: 0;
+            animation: fadeInGradually 1.5s ease 0.5s forwards;
+        }
+
+        @keyframes fadeInGradually {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .empty-hints {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .hint-chip {
+            font-family: var(--sans);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--body);
+            background: var(--surface-card);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 8px 14px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .hint-chip:hover { background: #e8e0d2; }
+
+        /* ── Message bubbles ── */
+        .msg {
+            max-width: 85%;
+            margin-bottom: 20px;
+            animation: fadeUp 0.3s ease;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-user {
+            margin-left: auto;
+            background: var(--surface-card);
+            color: var(--ink);
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .msg-ai {
+            margin-right: auto;
+            background: var(--surface-dark);
+            color: var(--on-dark);
+            border-radius: 12px;
+            padding: 18px 22px;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .msg-ai .role-label {
+            font-family: var(--sans);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--on-dark-soft);
+            margin-bottom: 8px;
+        }
+
+        .msg-ai code {
+            font-family: var(--mono);
+            font-size: 13px;
+            background: rgba(255,255,255,0.08);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        .msg-ai table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+
+        .msg-ai th,
+        .msg-ai td {
+            border: 1px solid rgba(255,255,255,0.12);
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .msg-ai th {
+            font-weight: 500;
+            color: var(--on-dark-soft);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .msg-loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--on-dark-soft);
+        }
+
+        .msg-ai .stream-text { white-space: pre-wrap; }
+
+        .dot-pulse {
+            display: flex;
+            gap: 4px;
+        }
+
+        .dot-pulse span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--on-dark-soft);
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        .dot-pulse span:nth-child(2) { animation-delay: 0.2s; }
+        .dot-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes pulse {
+            0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+            40% { opacity: 1; transform: scale(1); }
+        }
+
+        /* ── Input area ── */
+        .input-bar {
+            position: sticky;
+            bottom: 0;
+            background: var(--canvas);
+            padding: 16px 0 24px;
+            border-top: 1px solid var(--hairline);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-row input {
+            flex: 1;
+            font-family: var(--sans);
+            font-size: 15px;
+            font-weight: 400;
+            color: var(--ink);
+            background: var(--canvas);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 10px 14px;
+            height: 40px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .input-row input:focus { border-color: var(--primary); }
+
+        .input-row input::placeholder { color: var(--muted-soft); }
+
+        .input-row button {
+            font-family: var(--sans);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--on-primary);
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            padding: 0 20px;
+            height: 40px;
+            cursor: pointer;
+            transition: background 0.15s;
+            white-space: nowrap;
+        }
+
+        .input-row button:hover { background: var(--primary-active); }
+
+        .input-row button:disabled {
+            background: #e6dfd8;
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+
+        /* ── Footer ── */
+        footer {
+            background: var(--surface-dark);
+            color: var(--on-dark-soft);
+            font-size: 13px;
+            text-align: center;
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">
+        <span class="brand-name">帕姆帮帮</span>
+        <span class="brand-badge">Alpha</span>
+    </div>
+</header>
+
+<main>
+    <div class="messages" id="messages">
+        <div class="empty-state" id="emptyState">
+            <h1 class="animate-greeting"><span class="greeting-left">你好，</span><span class="greeting-right">开拓者</span></h1>
+            <p>我是帕姆，列车组的列车长！你可以问我任何关于崩坏：星穹铁道角色的问题帕。</p>
+            <div class="empty-hints">
+                <span class="hint-chip" onclick="sendHint(this.textContent)">欢愉命途体系的机制是什么？</span>
+                <span class="hint-chip" onclick="sendHint(this.textContent)">黄泉的技能都有哪些？</span>
+                <span class="hint-chip" onclick="sendHint(this.textContent)">知更鸟的星魂6是什么？</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="input-bar">
+        <form class="input-row" id="chatForm" autocomplete="off">
+            <input id="questionInput" type="text" placeholder="询问任意星穹铁道角色信息…" />
+            <button type="submit" id="sendBtn">发送</button>
+        </form>
+    </div>
+</main>
+
+<footer>
+    GameLore RAG &mdash; Agentic RAG on Honkai: Star Rail character knowledge base
+</footer>
+
+<script>
+    const messagesEl = document.getElementById('messages');
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('questionInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const emptyState = document.getElementById('emptyState');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const question = input.value.trim();
+        if (!question || sendBtn.disabled) return;
+        await ask(question);
+    });
+
+    async function sendHint(text) {
+        input.value = text;
+        await ask(text);
+    }
+
+    async function ask(question) {
+        if (emptyState) emptyState.remove();
+
+        appendUser(question);
+        input.value = '';
+        setLoading(true);
+
+        const loadingMsg = appendLoading();
+
+        try {
+            const res = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question }),
+            });
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let bubble = null;
+            let firstToken = true;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const payload = line.slice(6);
+                    if (payload === '[DONE]') break;
+
+                    try {
+                        const parsed = JSON.parse(payload);
+                        if (parsed.t) {
+                            if (firstToken) {
+                                loadingMsg.remove();
+                                bubble = appendAIBubble();
+                                firstToken = false;
+                            }
+                            bubble.textElement.textContent += parsed.t;
+                            scrollDown();
+                        }
+                        if (parsed.error) {
+                            loadingMsg.remove();
+                            appendAI('网络出了点问题，请稍后再试帕…');
+                        }
+                    } catch { /* 跳过非 JSON 行 */ }
+                }
+            }
+
+            if (firstToken) {
+                loadingMsg.remove();
+                appendAI('(帕姆一时语塞，请再问我一次帕…)');
+            }
+        } catch {
+            loadingMsg.remove();
+            appendAI('网络出了点问题，请稍后再试帕…');
+        } finally {
+            setLoading(false);
+            input.focus();
+        }
+    }
+
+    function appendUser(text) {
+        const div = document.createElement('div');
+        div.className = 'msg msg-user';
+        div.textContent = text;
+        messagesEl.appendChild(div);
+        scrollDown();
+    }
+
+    function appendAIBubble() {
+        const div = document.createElement('div');
+        div.className = 'msg msg-ai';
+        div.innerHTML = '<div class="role-label">帕姆</div><div class="stream-text"></div>';
+        const textEl = div.querySelector('.stream-text');
+        messagesEl.appendChild(div);
+        scrollDown();
+        return { element: div, textElement: textEl };
+    }
+
+    function appendLoading() {
+        const div = document.createElement('div');
+        div.className = 'msg msg-ai';
+        div.innerHTML = '<div class="role-label">帕姆</div><div class="msg-loading"><span>正在翻阅智库</span><div class="dot-pulse"><span></span><span></span><span></span></div></div>';
+        messagesEl.appendChild(div);
+        scrollDown();
+        return div;
+    }
+
+    function appendAI(text) {
+        const div = document.createElement('div');
+        div.className = 'msg msg-ai';
+        div.innerHTML = '<div class="role-label">帕姆</div>' + formatText(text);
+        messagesEl.appendChild(div);
+        scrollDown();
+    }
+
+    function formatText(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>');
+    }
+
+    function setLoading(loading) {
+        sendBtn.disabled = loading;
+        input.disabled = loading;
+        if (loading) {
+            sendBtn.textContent = '思考中…';
+        } else {
+            sendBtn.textContent = '发送';
+        }
+    }
+
+    function scrollDown() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+</script>
+
+</body>
+</html>

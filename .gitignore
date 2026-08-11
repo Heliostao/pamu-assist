@@ -1,0 +1,25 @@
+# 参考文档
+参考文档/
+
+# 环境配置
+.env
+
+# 知识库数据
+data/character/
+data/term/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db

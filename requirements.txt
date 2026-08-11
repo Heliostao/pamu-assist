@@ -1,0 +1,25 @@
+# Web Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Config
+python-dotenv>=1.0.0
+
+# LangChain 生态
+langchain-core
+langchain-openai
+langchain-chroma
+langchain-huggingface
+langchain-community
+langchain-text-splitters
+langchain-classic
+
+# LangGraph
+langgraph
+
+# Embedding & Reranker
+sentence-transformers>=3.0.0
+
+# Document Parsing
+unstructured[md]>=0.15.0
+markdown>=3.5.0
