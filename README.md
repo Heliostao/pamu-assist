@@ -140,14 +140,19 @@ pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 填入 DEEPSEEK_API_KEY 等配置
 
-# 4. 启动 Chroma 服务
+# 4. 生成智库
+cd crawler
+python json_to_md.py
+
+# 5. 启动 Chroma 服务
 docker run -d -p 8082:8000 chromadb/chroma
 
-# 5. 入库知识数据
-cd src/data_loader
+# 6. 入库知识数据
+cd ../src/data_loader
 python data_ingestion.py
 
-# 6. 启动服务
+# 7. 启动服务
+cd ../..
 python main.py
 # 访问 http://localhost:426/static/index.html
 ```
