@@ -39,14 +39,13 @@ class QuestionRequest(BaseModel):
 async def chat(req: QuestionRequest):
     async def event_stream():
         try:
-            async for event in graph.astream_events(  # type: ignore[union-attr]
+            async for chunk in graph.astream(  # type: ignore[union-attr]
                 {"messages": [HumanMessage(content=req.question)]},
-                version="v2",
+                stream_mode="custom",
             ):
-                if event["event"] == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if chunk.content:
-                        yield f"data: {json.dumps({'t': chunk.content}, ensure_ascii=False)}\n\n"
+                # stream_mode="custom" 只会收到节点中 writer 推送的 token
+                if isinstance(chunk, dict) and chunk.get("t"):
+                    yield f"data: {json.dumps({'t': chunk['t']}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"

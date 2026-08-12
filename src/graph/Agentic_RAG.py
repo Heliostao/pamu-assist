@@ -11,6 +11,7 @@ START → chatbot（LLM 决策 + 帕姆人设）
 """
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langgraph.constants import START, END
+from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -27,9 +28,18 @@ tool_node = ToolNode(tools)
 
 # 聊天节点
 def chatbot(state: MessagesState) -> dict:
-    response = llm_with_tools.invoke(
+    writer = get_stream_writer()
+    chunks = []
+    for chunk in llm_with_tools.stream(
         [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
-    )
+    ):
+        chunks.append(chunk)
+        if getattr(chunk, "content", ""):
+            writer({"t": chunk.content})
+    # 聚合 chunk，保留完整 tool_calls 供 tools_condition 判断
+    response = chunks[0]
+    for c in chunks[1:]:
+        response = response + c
     return {"messages": [response]}
 
 
@@ -55,8 +65,13 @@ def grade(state: MessagesState) -> dict:
         context=context,
         question_summary=question_summary,
     )
-    answer = llm.invoke(prompt)
-    return {"messages": [AIMessage(content=answer.content)]}
+    writer = get_stream_writer()
+    full = ""
+    for chunk in llm.stream(prompt):
+        if getattr(chunk, "content", ""):
+            writer({"t": chunk.content})
+            full += chunk.content
+    return {"messages": [AIMessage(content=full)]}
 
 
 builder = StateGraph(MessagesState)
