@@ -11,9 +11,9 @@ START → chatbot（LLM 决策 + 帕姆人设）
 """
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langgraph.constants import START, END
-from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.types import StreamWriter
 
 from src.models.llm import llm
 from src.prompts import SYSTEM_PROMPT
@@ -27,8 +27,7 @@ tool_node = ToolNode(tools)
 
 
 # 聊天节点
-def chatbot(state: MessagesState) -> dict:
-    writer = get_stream_writer()
+def chatbot(state: MessagesState, writer: StreamWriter) -> dict:
     chunks = []
     for chunk in llm_with_tools.stream(
         [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
@@ -44,7 +43,7 @@ def chatbot(state: MessagesState) -> dict:
 
 
 # 评估节点：评估检索结果 + 生成回答
-def grade(state: MessagesState) -> dict:
+def grade(state: MessagesState, writer: StreamWriter) -> dict:
     # 从 messages 中提取用户问题（最后一条 HumanMessage）
     question = ""
     for msg in reversed(state["messages"]):
@@ -65,7 +64,6 @@ def grade(state: MessagesState) -> dict:
         context=context,
         question_summary=question_summary,
     )
-    writer = get_stream_writer()
     full = ""
     for chunk in llm.stream(prompt):
         if getattr(chunk, "content", ""):

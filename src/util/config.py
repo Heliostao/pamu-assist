@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── 模型一律从本地 HuggingFace 缓存加载（生产环境无法访问 huggingface.co，始终离线）──
+# setdefault 不覆盖 .env 中已有的显式配置
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 # ── 项目根目录（config.py 位于 src/util/，上溯两级即项目根）──
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 

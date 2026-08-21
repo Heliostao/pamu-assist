@@ -115,6 +115,15 @@ async def chat(
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=426, reload=True)
+    # 生产默认关闭热重载（reload 会监听文件变更自动重启，消耗资源且有窗口期）
+    # 本地开发需要热重载时：PAMU_RELOAD=1 python main.py
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=426,
+        reload=os.getenv("PAMU_RELOAD", "0") == "1",
+    )

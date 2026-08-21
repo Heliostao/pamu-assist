@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createConversation, deleteConversation, listConversations, listMessages } from '../api/conversations'
 import { clearAuth, getToken, getUser } from '../stores/auth'
@@ -14,6 +14,8 @@ const sending = ref(false)
 const loadingHistory = ref(false)
 const messageListEl = ref(null)
 const user = ref(getUser())
+const isMobile = ref(window.innerWidth < 768)
+const sidebarOpen = ref(window.innerWidth >= 768)
 
 const emptyConversations = computed(() => conversations.value.length === 0)
 
@@ -70,6 +72,16 @@ async function removeConversation(id) {
 function logout() {
   clearAuth()
   router.push({ name: 'login' })
+}
+
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value
+}
+
+function handleResize() {
+  isMobile.value = window.innerWidth < 768
+  // 跨断点时自动复位：桌面展开、移动收起
+  sidebarOpen.value = !isMobile.value
 }
 
 function scrollDown() {
@@ -163,13 +175,21 @@ async function send() {
 
 onMounted(() => {
   refreshConversations()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
 <template>
   <div class="layout">
+    <!-- 移动端抽屉遮罩 -->
+    <div v-if="isMobile && sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false"></div>
+
     <!-- 侧边栏 -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-brand">
         <span class="brand-dot"></span>
         <span class="brand-name">帕姆帮帮</span>
@@ -199,6 +219,24 @@ onMounted(() => {
 
     <!-- 主聊天区 -->
     <main class="main">
+      <header class="topbar">
+        <button class="icon-btn" title="展开/收起侧边栏" @click="toggleSidebar">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <span class="topbar-title">帕姆帮帮</span>
+      </header>
       <div ref="messageListEl" class="messages">
         <div v-if="messages.length === 0" class="empty-state">
           <h1 class="greeting">你好，<span class="greeting-right">开拓者</span></h1>
@@ -254,6 +292,15 @@ onMounted(() => {
   background: var(--surface-dark);
   color: var(--on-dark);
   padding: 20px 16px;
+  transition: margin-left 0.25s ease, transform 0.25s ease;
+}
+
+/* 移动端抽屉遮罩 */
+.sidebar-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.45);
+  z-index: 90;
 }
 
 .sidebar-brand {
@@ -381,6 +428,43 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* 顶部工具条 */
+.topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 14px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--rounded-md);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.topbar-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .messages {
@@ -525,5 +609,48 @@ onMounted(() => {
   background: var(--primary-disabled);
   color: var(--muted);
   cursor: not-allowed;
+}
+
+/* ── 响应式 ── */
+/* 桌面端：侧边栏可收起（负边距移出，主区自动占满） */
+@media (min-width: 768px) {
+  .sidebar:not(.open) {
+    margin-left: -260px;
+  }
+}
+
+/* 移动端：侧边栏变为抽屉，默认收起 */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    margin-left: 0;
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
+  }
+
+  .messages {
+    padding: 16px 14px;
+  }
+
+  .msg,
+  .msg-ai {
+    max-width: 92%;
+  }
+
+  .greeting {
+    font-size: 28px;
+  }
+
+  .input-bar {
+    padding: 10px 12px 16px;
+  }
 }
 </style>
