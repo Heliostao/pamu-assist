@@ -18,7 +18,7 @@ class DocumentLoader:
         for md_path in self.data_dir.glob("*.md"):
             loader = UnstructuredMarkdownLoader(
                 file_path=str(md_path.resolve()),
-                mode="single",         # 整篇加载，交给 RecursiveCharacterTextSplitter 按语义边界切分
+                mode="single",
             )
             loaded = loader.load()
             for doc in loaded:

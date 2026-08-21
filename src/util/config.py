@@ -27,3 +27,29 @@ EMBEDDING_MODEL_DIR = os.getenv("EMBEDDING_MODEL_DIR", "BAAI/bge-base-zh-v1.5")
 
 # ── Reranker 模型（本地路径或 HuggingFace repo id） ──
 RERANKER_MODEL_DIR = os.getenv("RERANKER_MODEL_DIR", "BAAI/bge-reranker-base")
+
+# ── 认证与登录 ──
+SECRET_KEY = os.getenv("SECRET_KEY", "pamu-assist-jwt-secret-change-me")
+JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
+JWT_ALGORITHM = "HS256"
+
+# 默认账号（账号密码登录，账号密码均从 .env 读取）
+DEFAULT_USERNAME = os.getenv("DEFAULT_USERNAME", "taogong")
+DEFAULT_PASSWORD = os.getenv("DEFAULT_PASSWORD", "050425")
+
+# SMTP（QQ 邮箱，发送验证码）
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.qq.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASS = os.getenv("SMTP_PASS")
+
+# Redis（验证码缓存）
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "8"))
+
+# PostgreSQL
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://pamu:050425@localhost:5433/pamu",
+)

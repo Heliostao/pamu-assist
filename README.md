@@ -1,186 +1,136 @@
-# 崩坏:星穹铁道 助手——帕姆帮帮
+# 帕姆帮帮 · 崩坏:星穹铁道 AI 助手（V2）
 
-> **V1.1** — 修复回答重复输出的问题；Chroma 知识库内嵌进项目。
+基于 Agentic RAG 的崩坏:星穹铁道知识助手。登录后向列车长帕姆提问，即可获得游戏角色、机制、术语相关的流式回答。
 
-> **V1** — 崩铁的帕姆帮帮测试结束了，但还是想试试？对此，基于 Agentic RAG 的崩坏:星穹铁道角色知识助手，列车长帕姆为你解答一切。暂时只支持游戏相关术语和全部角色的各个信息
-## 架构总览
+## 版本更新
 
-### 系统架构
+> **V2.0（当前）** — 新增登录界面与历史对话：
+> - 新增登录界面：账号密码登录（默认 `taogong`，账号密码由 `.env` 配置）+ 邮箱验证码登录（未注册邮箱自动注册）
+> - 新增历史对话：侧边栏会话列表，支持新建 / 切换 / 删除会话
+> - 前端重构为 Vue3 + Vite 工程（替代原单文件页面），构建产物由 FastAPI 统一托管
+> - 新增认证与存储层：JWT + bcrypt 认证，PostgreSQL 持久化用户/会话/消息，Redis 存储验证码
+
+> **V1.1** — 修复回答重复输出；Chroma 知识库内嵌进项目。
+
+> **V1.0** — 首版：Agentic RAG 角色知识助手。
+
+## 效果展示
+
+![登录界面](images/登录界面图.png)
+
+![对话界面](images/界面图.png)
+
+## 核心特性
+
+- **Agentic RAG**：LLM 自主判断是否需要检索，检索结果经相关性评估后再生成，不相关时兜底回答，降低幻觉
+- **帕姆人设**：全程以列车长帕姆的口吻应答
+- **流式输出**：SSE 逐字推送，首字即出
+- **账号体系**：账号密码 / 邮箱验证码双登录，JWT 鉴权，历史会话按用户隔离
+
+## 系统架构
 
 ```mermaid
 graph TB
-    subgraph 用户层
-        U[🖥 浏览器] -->|SSE 流式| FE[index.html<br/>静态前端]
+    subgraph 前端
+        U[浏览器 · Vue3 登录页/对话页]
     end
 
     subgraph 服务层
-        FE -->|POST /chat| API[FastAPI<br/>main.py]
-        API -->|astream_events| LG[LangGraph<br/>编译图]
+        U -->|REST /auth /conversations| API[FastAPI]
+        U -->|SSE /chat| API
+        API -->|Bearer JWT| AUTH[JWT + bcrypt 认证]
     end
 
     subgraph Agent 层
-        LG --> CB[chatbot 节点<br/>LLM 决策 + 工具调用]
-        CB -->|条件边| TC{tools_condition}
-        TC -->|无 tool_call| END1[END]
-        TC -->|有 tool_call| TN[ToolNode<br/>retrieve_knowledge]
-        TN --> GD[grade 节点<br/>相关性评估 + 回答生成]
-        GD --> END2[END]
+        API -->|astream| LG[LangGraph]
+        LG --> CH[chatbot 节点<br/>LLM 决策 + 工具调用]
+        CH -->|tool_call| TN[ToolNode 检索]
+        TN --> GD[grade 节点<br/>相关性评估 → 生成/兜底]
     end
 
     subgraph 检索管线
-        TN -->|1. 向量检索| VS[(Chroma<br/>持久化)]
-        VS -->|top 8| RR[CrossEncoder<br/>重排 top 5]
-        RR -->|格式化片段| TN
+        TN --> VS[(Chroma 向量库)]
+        VS -.-> BGE[BGE embedding + reranker 本地模型]
     end
 
-    subgraph 本地模型-进程内
-        VS -.->|HuggingFaceEmbeddings| BGE[BAAI/bge-base-zh-v1.5]
-        RR -.->|HuggingFaceCrossEncoder| RERANK[BAAI/bge-reranker-base]
-    end
-
-    subgraph 知识构建-离线
-        WIKI[Wiki 数据] -->|爬虫| MD[Markdown 文档]
-        MD -->|RecursiveCharacterTextSplitter<br/>chunk=512 overlap=64| CHK[文本块]
-        CHK -->|BGE Embedding| VS
-    end
-
-    subgraph 外部依赖
-        CB -->|ChatOpenAI| DS[DeepSeek API]
+    subgraph 存储层
+        AUTH --> RD[(Redis 验证码)]
+        API --> PG[(PostgreSQL<br/>用户 / 会话 / 消息)]
+        CH --> DS[DeepSeek API]
     end
 ```
 
-### LangGraph 工作流
-
-```mermaid
-stateDiagram-v2
-    [*] --> chatbot
-
-    state chatbot {
-        [*] --> decision: SystemMessage(帕姆人设) + 用户消息
-        decision --> call_tool: 判定需要检索
-        decision --> direct_reply: 闲聊/打招呼
-    }
-
-    state tools {
-        [*] --> vector_search: 向量检索 (k=8, threshold=0.35)
-        vector_search --> rerank: CrossEncoder 重排 (top_n=5)
-        rerank --> format: 附加 doc_type 标签
-    }
-
-    state grade {
-        [*] --> evaluate: 评估检索相关性
-        evaluate --> answer: 相关 → 基于片段生成回答
-        evaluate --> fallback: 不相关 → 帕姆风格兜底
-    }
-
-    chatbot --> tools: tool_call
-    chatbot --> [*]: 无 tool_call
-    tools --> grade
-    grade --> [*]
-```
+工作流：LLM 决策 →（需要时）向量检索 top 8 + CrossEncoder 重排 top 5 → 相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
 
 ## 技术选型
 
 | 组件 | 选型 | 说明 |
 |------|------|------|
-| Agent 框架 | LangGraph | 显式状态图、条件分支可控、便于调试和白板讲解 |
-| 向量数据库 | Chroma (持久化模式) | 嵌入式运行、无需独立服务、支持元数据过滤、与 LangChain 深度集成 |
-| Embedding | BAAI/bge-base-zh-v1.5 | 中文语义理解优秀、本地部署零成本、C-MTEB 排名领先 |
-| 重排序 | CrossEncoder (bge-reranker-base) | 对 top 8 向量结果二次精排到 top 5，提升检索精度 |
-| 大模型 | DeepSeek | 中文能力强、成本低、支持 function calling |
-| 文档解析 | UnstructuredMarkdownLoader | 保留 Markdown 结构信息，按语义边界切分更准确 |
-| 前后端通信 | SSE 流式 | 单向推送场景更轻量，FastAPI 原生支持 |
+| 前端 | Vue3 + Vite | 组件化登录页/对话页，构建产物由后端托管，单端口部署 |
+| 后端 | FastAPI | 异步接口 + SSE 流式，静态文件托管 |
+| Agent 框架 | LangGraph | 显式状态图，节点可观测、条件分支可控 |
+| 认证 | JWT + bcrypt | 无状态鉴权，密码哈希存储 |
+| 验证码 | SMTP + Redis | QQ 邮箱发信，Redis 存码（5 分钟过期 + 60s 冷却） |
+| 业务存储 | PostgreSQL | 用户、会话、消息持久化 |
+| 向量库 | Chroma（持久化） | 嵌入式运行，无需独立服务 |
+| Embedding / 重排 | BGE base-zh / reranker | 中文语义本地推理，零调用成本 |
+| 大模型 | DeepSeek | 中文能力强、支持 function calling |
 
 ## 项目结构
 
 ```
 pamu_assist/
-├── main.py                      # FastAPI 入口，SSE 流式接口
+├── main.py                  # FastAPI 入口：/chat SSE、静态托管、启动初始化
+├── frontend/                # Vue3 + Vite 前端工程（构建输出到 src/static）
 ├── src/
-│   ├── graph/
-│   │   └── Agentic_RAG.py       # LangGraph 三节点工作流定义
-│   ├── models/
-│   │   ├── llm.py               # DeepSeek 大模型实例
-│   │   └── chroma.py            # Chroma 持久化向量库 + BGE Embedding
-│   ├── tools/
-│   │   └── rag_tool.py          # 检索工具：向量检索 + CrossEncoder 重排
-│   ├── prompts/
-│   │   ├── decision_prompt.py   # chatbot 节点 System Prompt（帕姆人设）
-│   │   └── grade_prompt.py      # grade 节点 Prompt（评估 + 生成）
-│   ├── data_loader/
-│   │   ├── document_loader.py   # Markdown 文档加载
-│   │   ├── document_splitter.py # 递归文本分割 (chunk=512, overlap=64)
-│   │   ├── document_index.py    # 向量入库（哈希去重、增量更新）
-│   │   ├── data_ingestion.py    # 入库主入口
-│   │   └── term_loader.py       # 术语表解析加载
-│   ├── util/
-│   │   └── config.py            # .env 配置加载
-│   └── static/
-│       └── index.html           # 前端聊天界面
-├── data/
-│   └── json/                    # Wiki 原始 JSON 数据
-├── chroma_data/                 # Chroma 持久化向量库
-└── crawler/
-    └── json_to_md.py            # Wiki JSON → Markdown 转换
+│   ├── api/                 # REST 接口：auth（认证）、conversations（会话）
+│   ├── auth/                # JWT/bcrypt、SMTP 发信、Redis 验证码
+│   ├── database/            # SQLAlchemy 模型 + PostgreSQL
+│   ├── graph/               # LangGraph Agentic RAG 工作流
+│   ├── models/              # DeepSeek LLM、Chroma + BGE
+│   ├── tools/               # 检索工具（向量检索 + 重排）
+│   ├── prompts/             # 帕姆人设 / 相关性评估 Prompt
+│   ├── data_loader/         # 知识入库（加载/切分/索引）
+│   ├── util/                # .env 配置
+│   └── static/              # 前端构建产物
+├── data/                    # Wiki 原始数据
+├── chroma_data/             # Chroma 持久化向量库
+├── crawler/                 # Wiki JSON → Markdown
+└── Dockerfile               # 多阶段构建（Node 构建前端 + Python 运行）
 ```
 
 ## 快速开始
 
-### 环境要求
-
-- Python 3.10+
-- DeepSeek API Key
-
-### 安装
+环境要求：Python 3.10+、Node 20+（仅构建前端需要）、PostgreSQL、Redis、DeepSeek API Key。
 
 ```bash
-# 1. 克隆项目
-git clone <repo-url>
-cd pamu_assist
-
-# 2. 安装依赖
+# 1. 安装后端依赖
 pip install -r requirements.txt
 
-# 3. 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入 DEEPSEEK_API_KEY 等配置
+# 2. 构建前端
+cd frontend && npm install && npm run build && cd ..
 
-# 4. 生成智库
-cd crawler
-python json_to_md.py
+# 3. 配置 .env（键参考：DEEPSEEK_API_KEY / SECRET_KEY / SMTP_* / REDIS_* /
+#    DATABASE_URL=postgresql+psycopg2://pamu:pamu@localhost:5433/pamu / DEFAULT_USERNAME / DEFAULT_PASSWORD）
 
-# 5. 入库知识数据
-cd ../src/data_loader
-python data_ingestion.py
-
-# 6. 启动服务
-cd ../..
+# 4. 启动 PostgreSQL 与 Redis，然后启动服务
 python main.py
-# 访问 http://localhost:426/static/index.html
+# 访问 http://localhost:426/
 ```
 
-## 检索管线
+也可用 Docker 一键部署（需外部 PostgreSQL/Redis 可达）：`docker build -t pamu-assist . && docker run -p 426:426 --env-file .env pamu-assist`
 
-```
-用户问题 → LLM 解析角色名 + 查询方面
-                ↓
-        Chroma 向量检索 (cosine, k=8, threshold≥0.35)
-                ↓
-        CrossEncoder 重排序 (bge-reranker-base, top_n=5)
-                ↓
-        附加 doc_type 标签 ([角色数据] / [术语 XX相关])
-                ↓
-        LLM 评估相关性 + 生成帕姆风格回答
-```
+默认账号：`taogong / 050425`（可在 `.env` 修改）。
 
-- 相似度阈值 0.35 过滤明显无关内容
-- CrossEncoder Top 8 → Top 5，平衡召回率与精度
-- `doc_type` 标签区分角色专属机制与游戏通用规则，避免幻觉
+## 接口一览
 
-## 效果展示
-### 界面展示
-![界面图.png](images/%E7%95%8C%E9%9D%A2%E5%9B%BE.png)
-### 示例1
-![示例1.png](images/%E7%A4%BA%E4%BE%8B1.png)
-### 示例2
-![示例2.png](images/%E7%A4%BA%E4%BE%8B2.png)
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| POST | `/auth/vcode` | 发送邮箱验证码 | - |
+| POST | `/auth/login/email` | 邮箱验证码登录（自动注册） | - |
+| POST | `/auth/login/password` | 账号密码登录 | - |
+| GET | `/auth/me` | 当前用户信息 | Bearer |
+| GET/POST | `/conversations` | 会话列表 / 新建 | Bearer |
+| DELETE | `/conversations/{id}` | 删除会话 | Bearer |
+| GET | `/conversations/{id}/messages` | 会话消息 | Bearer |
+| POST | `/chat` | SSE 流式对话（自动记录问答） | Bearer |

@@ -1,3 +1,12 @@
+# ── 阶段一：构建前端（Vue3 + Vite）──
+FROM node:20-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+# ── 阶段二：后端运行镜像 ──
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -23,6 +32,9 @@ HuggingFaceCrossEncoder(model_name='BAAI/bge-reranker-base', model_kwargs={'devi
 
 # ── 拷贝项目（含本地预构建的 chroma_data/ 向量库）──
 COPY . .
+
+# ── 覆盖为 Docker 内构建的前端产物 ──
+COPY --from=frontend /frontend/src/static/ ./src/static/
 
 # ── 环境变量 ──
 ENV PYTHONPATH=/app

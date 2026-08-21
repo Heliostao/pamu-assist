@@ -4,9 +4,15 @@
 # 环境配置
 .env
 
+# 前端
+frontend/node_modules/
+
 # 知识库数据
 data/character/
 data/term/
+
+# Chroma 向量库（构建产物，不入库）
+chroma_data/
 
 # Python
 __pycache__/
