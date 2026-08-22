@@ -212,7 +212,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="sidebar-user">
-        <div class="user-mail">{{ user?.nickname || user?.email || '未知用户' }}</div>
+        <div class="user-mail">{{ user?.nickname || user?.username || user?.email || '未知用户' }}</div>
         <button class="btn-secondary logout-btn" @click="logout">退出登录</button>
       </div>
     </aside>

@@ -1,13 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { loginByEmail, loginByPassword, sendVcode } from '../api/auth'
+import { loginByEmail, loginByPassword, registerUser, sendVcode } from '../api/auth'
 import { setToken, setUser } from '../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 
-const mode = ref('password') // password | vcode
+const mode = ref('password') // password | vcode | register
 const loading = ref(false)
 const errorMsg = ref('')
 const countdown = ref(0)
@@ -15,18 +15,31 @@ let timer = null
 
 const form = reactive({
   username: '',
+  nickname: '',
   email: '',
   password: '',
   vcode: '',
 })
 
+const usernameValid = computed(() => /^[a-zA-Z0-9_]{2,32}$/.test(form.username.trim()))
+const nicknameValid = computed(() => form.nickname.trim().length > 0 && form.nickname.trim().length <= 32)
 const emailValid = computed(() => /^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(form.email.trim()))
 
 const canSubmit = computed(() => {
   if (mode.value === 'password') {
     return form.username.trim().length > 0 && form.password.length >= 6
   }
-  return emailValid.value && form.vcode.length === 6
+  if (mode.value === 'vcode') {
+    return emailValid.value && form.vcode.length === 6
+  }
+  // register
+  return (
+    usernameValid.value &&
+    nicknameValid.value &&
+    emailValid.value &&
+    form.password.length >= 6 &&
+    form.vcode.length === 6
+  )
 })
 
 function startCountdown() {
@@ -60,10 +73,20 @@ async function handleSubmit() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const res =
-      mode.value === 'password'
-        ? await loginByPassword(form.username.trim(), form.password)
-        : await loginByEmail(form.email.trim(), form.vcode)
+    let res
+    if (mode.value === 'password') {
+      res = await loginByPassword(form.username.trim(), form.password)
+    } else if (mode.value === 'vcode') {
+      res = await loginByEmail(form.email.trim(), form.vcode)
+    } else {
+      res = await registerUser({
+        username: form.username.trim(),
+        nickname: form.nickname.trim(),
+        password: form.password,
+        email: form.email.trim(),
+        vcode: form.vcode,
+      })
+    }
     setToken(res.data.token)
     setUser(res.data.user)
     router.push(route.query.redirect || '/')
@@ -72,6 +95,11 @@ async function handleSubmit() {
   } finally {
     loading.value = false
   }
+}
+
+function switchMode(m) {
+  mode.value = m
+  errorMsg.value = ''
 }
 
 onBeforeUnmount(() => {
@@ -95,28 +123,35 @@ onBeforeUnmount(() => {
         <button
           class="tab"
           :class="{ active: mode === 'password' }"
-          @click="mode = 'password'; errorMsg = ''"
+          @click="switchMode('password')"
         >
           账号登录
         </button>
         <button
           class="tab"
           :class="{ active: mode === 'vcode' }"
-          @click="mode = 'vcode'; errorMsg = ''"
+          @click="switchMode('vcode')"
         >
           邮箱验证码
+        </button>
+        <button
+          class="tab"
+          :class="{ active: mode === 'register' }"
+          @click="switchMode('register')"
+        >
+          注册
         </button>
       </div>
 
       <form class="form" @submit.prevent="handleSubmit">
         <template v-if="mode === 'password'">
           <label class="field">
-            <span class="label">账号</span>
+            <span class="label">账号或邮箱</span>
             <input
               v-model.trim="form.username"
               class="text-input"
               type="text"
-              placeholder="请输入账号"
+              placeholder="请输入账号或邮箱"
               autocomplete="username"
             />
           </label>
@@ -133,14 +168,14 @@ onBeforeUnmount(() => {
           </label>
         </template>
 
-        <template v-else>
+        <template v-else-if="mode === 'vcode'">
           <label class="field">
             <span class="label">邮箱</span>
             <input
               v-model.trim="form.email"
               class="text-input"
               type="email"
-              placeholder="请输入邮箱"
+              placeholder="请输入已注册的邮箱"
               autocomplete="email"
             />
           </label>
@@ -167,14 +202,87 @@ onBeforeUnmount(() => {
           </label>
         </template>
 
+        <template v-else>
+          <label class="field">
+            <span class="label">账号</span>
+            <input
+              v-model.trim="form.username"
+              class="text-input"
+              type="text"
+              placeholder="2-32 位字母、数字或下划线"
+              autocomplete="username"
+            />
+          </label>
+
+          <label class="field">
+            <span class="label">用户名</span>
+            <input
+              v-model.trim="form.nickname"
+              class="text-input"
+              type="text"
+              placeholder="展示用的名字，1-32 个字符，如：帕姆"
+              autocomplete="nickname"
+            />
+          </label>
+
+          <label class="field">
+            <span class="label">邮箱</span>
+            <input
+              v-model.trim="form.email"
+              class="text-input"
+              type="email"
+              placeholder="请输入邮箱，用于绑定账号"
+              autocomplete="email"
+            />
+          </label>
+
+          <label class="field">
+            <span class="label">验证码</span>
+            <div class="vcode-row">
+              <input
+                v-model="form.vcode"
+                class="text-input vcode-input"
+                type="text"
+                maxlength="6"
+                placeholder="6 位验证码"
+              />
+              <button
+                type="button"
+                class="btn-secondary vcode-btn"
+                :disabled="countdown > 0 || loading"
+                @click="handleSendVcode"
+              >
+                {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
+              </button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span class="label">密码</span>
+            <input
+              v-model="form.password"
+              class="text-input"
+              type="password"
+              placeholder="至少 6 位"
+              autocomplete="new-password"
+            />
+          </label>
+        </template>
+
         <p class="error-text">{{ errorMsg }}</p>
 
         <button class="btn-primary submit" type="submit" :disabled="!canSubmit || loading">
-          {{ loading ? '登录中...' : '登 录' }}
+          {{ loading ? '处理中...' : mode === 'register' ? '注 册' : '登 录' }}
         </button>
 
         <p class="hint">
-          {{ mode === 'password' ? '账号登录需使用管理员分配的账号' : '验证码登录：未注册邮箱将自动创建账号' }}
+          {{
+            mode === 'password'
+              ? '支持账号或已绑定的邮箱 + 密码登录'
+              : mode === 'vcode'
+                ? '验证码登录仅限已注册并绑定邮箱的账号'
+                : '注册即绑定邮箱，注册后可用账号或邮箱登录'
+          }}
         </p>
       </form>
     </div>

@@ -5,12 +5,17 @@ export function sendVcode(email) {
   return http.post('/auth/vcode', { email })
 }
 
-// 邮箱验证码登录（无账号自动注册）
+// 账号注册（账号 + 用户名 + 密码 + 邮箱 + 验证码，注册即绑定邮箱）
+export function registerUser({ username, nickname, password, email, vcode }) {
+  return http.post('/auth/register', { username, nickname, password, email, vcode })
+}
+
+// 邮箱验证码登录（仅限已绑定账号的邮箱）
 export function loginByEmail(email, vcode) {
   return http.post('/auth/login/email', { email, vcode })
 }
 
-// 默认账号密码登录
+// 账号或邮箱 + 密码登录
 export function loginByPassword(username, password) {
   return http.post('/auth/login/password', { username, password })
 }
