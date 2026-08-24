@@ -1,22 +1,22 @@
-// Token 与用户信息的本地缓存
+// Token 与用户信息的会话缓存（关闭浏览器后自动失效）
 const TOKEN_KEY = 'pamu_token'
 const USER_KEY = 'pamu_user'
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || ''
+  return sessionStorage.getItem(TOKEN_KEY) || ''
 }
 
 export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token)
+  sessionStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(USER_KEY)
 }
 
 export function getUser() {
-  const raw = localStorage.getItem(USER_KEY)
+  const raw = sessionStorage.getItem(USER_KEY)
   if (!raw) return null
   try {
     return JSON.parse(raw)
@@ -26,5 +26,5 @@ export function getUser() {
 }
 
 export function setUser(user) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  sessionStorage.setItem(USER_KEY, JSON.stringify(user))
 }

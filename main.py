@@ -5,14 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from src.api import auth as auth_api
 from src.api import conversations as conv_api
 from src.auth.security import get_current_user
 from src.database.db import get_db, init_db
+from src.database.models import Message as DbMessage
 from src.database.models import User
+from src.util.config import RAG_HISTORY_LIMIT
 
 graph = None  # LangGraph 编译对象，lifespan 启动时注入
 
@@ -33,6 +35,25 @@ def _load_graph():
     from src.graph.Agentic_RAG import graph as g
 
     return g
+
+
+def _load_history(db, conversation_id: int) -> list:
+    """短期记忆：加载会话最近的 N 条历史消息，构造为消息对象序列。"""
+    rows = (
+        db.query(DbMessage)
+        .filter(DbMessage.conversation_id == conversation_id)
+        .order_by(DbMessage.id.desc())
+        .limit(RAG_HISTORY_LIMIT)
+        .all()
+    )
+    rows.reverse()
+    history = []
+    for row in rows:
+        if row.role == "user":
+            history.append(HumanMessage(content=row.content))
+        elif row.role == "assistant":
+            history.append(AIMessage(content=row.content))
+    return history
 
 
 app = FastAPI(lifespan=lifespan)
@@ -79,9 +100,12 @@ async def chat(
         def on_token(t: str):
             collected.append(t)
 
+        # 短期记忆：注入该会话最近的历史消息（与当前问题组成多轮上下文）
+        history = await asyncio.to_thread(_load_history, db, conversation_id)
+
         try:
             async for chunk in graph.astream(  # type: ignore[union-attr]
-                {"messages": [HumanMessage(content=req.question)]},
+                {"messages": history + [HumanMessage(content=req.question)]},
                 stream_mode="custom",
             ):
                 # stream_mode="custom" 只会收到节点中 writer 推送的 token

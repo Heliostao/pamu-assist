@@ -32,6 +32,18 @@ EMBEDDING_MODEL_DIR = os.getenv("EMBEDDING_MODEL_DIR", "BAAI/bge-base-zh-v1.5")
 # ── Reranker 模型（本地路径或 HuggingFace repo id） ──
 RERANKER_MODEL_DIR = os.getenv("RERANKER_MODEL_DIR", "BAAI/bge-reranker-base")
 
+# ── RAG 检索参数（向量召回 + 重排） ──
+RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "8"))
+RETRIEVAL_SCORE_THRESHOLD = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.35"))
+RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
+
+# ── RAG 检索结果缓存（Redis，命中跳过向量检索与重排） ──
+RAG_CACHE_ENABLED = os.getenv("RAG_CACHE_ENABLED", "true").lower() == "true"
+RAG_CACHE_TTL = int(os.getenv("RAG_CACHE_TTL", "86400"))
+
+# ── 短期记忆：每次问答注入会话的历史消息条数 ──
+RAG_HISTORY_LIMIT = int(os.getenv("RAG_HISTORY_LIMIT", "8"))
+
 # ── 认证与登录 ──
 SECRET_KEY = os.getenv("SECRET_KEY", "pamu-assist-jwt-secret-change-me")
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))

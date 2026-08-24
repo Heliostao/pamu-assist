@@ -28,7 +28,33 @@ async function refreshConversations() {
   }
 }
 
+const infoModal = ref(false)
+const isCreating = ref(false)
+
 async function newConversation() {
+  if (isCreating.value) return
+
+  // 当前已经在空对话：直接提示，不重复创建（实时状态最可靠，不依赖列表刷新）
+  if (currentConvId.value !== null && messages.value.length === 0) {
+    infoModal.value = true
+    return
+  }
+
+  // 列表里已有空的新对话：切换过去并提示
+  const existingNew = conversations.value.find((c) => c.title === '新对话')
+  if (existingNew) {
+    if (existingNew.id !== currentConvId.value) {
+      try {
+        await openConversation(existingNew.id)
+      } catch {
+        /* 历史加载失败不阻塞弹窗 */
+      }
+    }
+    infoModal.value = true
+    return
+  }
+
+  isCreating.value = true
   try {
     const res = await createConversation()
     currentConvId.value = res.data.id
@@ -37,6 +63,8 @@ async function newConversation() {
     scrollDown()
   } catch {
     /* 忽略 */
+  } finally {
+    isCreating.value = false
   }
 }
 
@@ -48,15 +76,29 @@ async function openConversation(id) {
   try {
     const res = await listMessages(id)
     messages.value = res.data.map((m) => ({ role: m.role, content: m.content }))
-    await nextTick()
-    scrollDown()
+  } catch {
+    messages.value = []
   } finally {
     loadingHistory.value = false
+    await nextTick()
+    scrollDown()
   }
 }
 
-async function removeConversation(id) {
-  if (!confirm('确定删除这个对话吗？')) return
+const deleteModal = ref({ show: false, targetId: null })
+
+function openDeleteModal(id) {
+  deleteModal.value = { show: true, targetId: id }
+}
+
+function cancelDelete() {
+  deleteModal.value = { show: false, targetId: null }
+}
+
+async function confirmDelete() {
+  const id = deleteModal.value.targetId
+  if (id === null) return
+  deleteModal.value = { show: false, targetId: null }
   try {
     await deleteConversation(id)
     if (currentConvId.value === id) {
@@ -67,6 +109,10 @@ async function removeConversation(id) {
   } catch {
     /* 忽略 */
   }
+}
+
+async function removeConversation(id) {
+  openDeleteModal(id)
 }
 
 function logout() {
@@ -187,6 +233,37 @@ onBeforeUnmount(() => {
   <div class="layout">
     <!-- 移动端抽屉遮罩 -->
     <div v-if="isMobile && sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false"></div>
+
+    <!-- 提示模态框（已经是新对话） -->
+    <div v-if="infoModal" class="modal-overlay" @click="infoModal = false">
+      <div class="modal-box" @click.stop>
+        <div class="modal-header">
+          <span class="modal-icon modal-icon-info">i</span>
+          <span class="modal-title">提示</span>
+          <button class="modal-close" @click="infoModal = false">×</button>
+        </div>
+        <div class="modal-body">已经是最新对话</div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-primary" @click="infoModal = false">知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认模态框 -->
+    <div v-if="deleteModal.show" class="modal-overlay" @click="cancelDelete">
+      <div class="modal-box" @click.stop>
+        <div class="modal-header">
+          <span class="modal-icon">!</span>
+          <span class="modal-title">确认删除</span>
+          <button class="modal-close" @click="cancelDelete">×</button>
+        </div>
+        <div class="modal-body">是否删除对话？删除后对话不可找回！</div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel" @click="cancelDelete">取消</button>
+          <button class="modal-btn modal-btn-delete" @click="confirmDelete">删除</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
@@ -612,6 +689,135 @@ onBeforeUnmount(() => {
 }
 
 /* ── 响应式 ── */
+
+/* 删除确认模态框 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-box {
+  width: 360px;
+  background: var(--surface-dark);
+  color: var(--on-dark);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 12px;
+  position: relative;
+}
+
+.modal-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--error);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.modal-icon-info {
+  background: #2a7fff;
+  font-family: Georgia, serif;
+  font-style: italic;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.modal-close {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--on-dark-soft);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--surface-dark-elevated);
+  color: var(--on-dark);
+}
+
+.modal-body {
+  padding: 0 20px 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--on-dark-soft);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 20px 18px;
+}
+
+.modal-btn {
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.modal-btn-cancel {
+  background: var(--surface-dark-elevated);
+  color: var(--on-dark);
+}
+
+.modal-btn-cancel:hover {
+  background: var(--surface-dark-soft);
+}
+
+.modal-btn-delete {
+  background: var(--error);
+  color: #fff;
+}
+
+.modal-btn-delete:hover {
+  background: #d94444;
+}
+
+.modal-btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.modal-btn-primary:hover {
+  background: var(--primary-active);
+}
+
 /* 桌面端：侧边栏可收起（负边距移出，主区自动占满） */
 @media (min-width: 768px) {
   .sidebar:not(.open) {

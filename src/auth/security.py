@@ -1,4 +1,5 @@
 """JWT 签发/校验与密码哈希。"""
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -9,6 +10,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.database.db import get_db
 from src.database.models import User
 from src.util.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, SECRET_KEY
+
+# 服务实例标识：进程启动时生成一次。后端每次重启后该值变化，
+# 旧 token 携带的 inst 与之不匹配 → 校验失败 → 前端强制回到登录页。
+SERVER_INSTANCE_ID = uuid.uuid4().hex
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -23,20 +28,32 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_token(user_id: int, email: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
-    payload = {"sub": str(user_id), "email": email, "exp": expire}
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "exp": expire,
+        "inst": SERVER_INSTANCE_ID,
+    }
     return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
-    """校验并解析 token，非法或过期抛 401。"""
+    """校验并解析 token，非法/过期/跨服务实例（后端重启）抛 401。"""
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="登录已过期，请重新登录",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if payload.get("inst") != SERVER_INSTANCE_ID:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="服务已重启，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
 
 
 def get_current_user(

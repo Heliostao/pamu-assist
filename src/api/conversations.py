@@ -55,7 +55,27 @@ async def create_conversation(
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    conv = Conversation(user_id=user.id, title=req.title.strip() or "新对话")
+    """新建会话。
+
+    幂等处理：若该用户已存在标题为"新对话"的空会话（未发送过任何消息，
+    发消息时 save_chat_messages 会改写标题），直接返回它，避免前端反复点击
+    "新建对话"产生一堆空会话。
+    """
+    title = req.title.strip() or "新对话"
+    if title == "新对话":
+        existing = (
+            db.query(Conversation)
+            .filter(
+                Conversation.user_id == user.id,
+                Conversation.title == "新对话",
+            )
+            .order_by(Conversation.updated_at.desc())
+            .first()
+        )
+        if existing is not None:
+            return {"id": existing.id, "title": existing.title}
+
+    conv = Conversation(user_id=user.id, title=title)
     db.add(conv)
     db.commit()
     db.refresh(conv)
