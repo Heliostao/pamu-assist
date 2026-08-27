@@ -1,5 +1,18 @@
+"""
+唯一的 FastAPI 应用入口，负责：
+组装路由（挂载 auth、conversations 两个 router + 静态资源）、
+定义核心的 POST /chat 流式接口（SSE）、
+启动时经 lifespan 初始化数据库与编译 LangGraph。
+
+/chat 里做三件事：
+校验会话归属 →
+从数据库加载最近 RAG_HISTORY_LIMIT 条历史拼成多轮消息（短期记忆）→
+交给 graph.astream 流式生成，边收 token 边推给前端，结束后把问答写回数据库。
+"""
+
 import asyncio
 import json
+import random
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -14,7 +27,8 @@ from src.auth.security import get_current_user
 from src.database.db import get_db, init_db
 from src.database.models import Message as DbMessage
 from src.database.models import User
-from src.util.config import RAG_HISTORY_LIMIT
+from src.util.config import EVAL_LOG_ENABLED, EVAL_SAMPLE_RATE, RAG_HISTORY_LIMIT
+from src.util.eval_log import write_eval_log
 
 graph = None  # LangGraph 编译对象，lifespan 启动时注入
 
@@ -96,6 +110,7 @@ async def chat(
 
     async def event_stream():
         collected = []
+        retrieved_docs: list[dict] = []
 
         def on_token(t: str):
             collected.append(t)
@@ -104,14 +119,22 @@ async def chat(
         history = await asyncio.to_thread(_load_history, db, conversation_id)
 
         try:
-            async for chunk in graph.astream(  # type: ignore[union-attr]
+            async for mode, chunk in graph.astream(  # type: ignore[union-attr]
                 {"messages": history + [HumanMessage(content=req.question)]},
-                stream_mode="custom",
+                stream_mode=["custom", "updates"],
             ):
-                # stream_mode="custom" 只会收到节点中 writer 推送的 token
-                if isinstance(chunk, dict) and chunk.get("t"):
-                    on_token(chunk["t"])
-                    yield f"data: {json.dumps({'t': chunk['t']}, ensure_ascii=False)}\n\n"
+                if mode == "custom":
+                    # stream_mode="custom" 只会收到节点中 writer 推送的 token
+                    if isinstance(chunk, dict) and chunk.get("t"):
+                        on_token(chunk["t"])
+                        yield f"data: {json.dumps({'t': chunk['t']}, ensure_ascii=False)}\n\n"
+                elif mode == "updates":
+                    # 从 format 节点输出中捕获本次检索结果（写评估日志用）
+                    for node_name, output in chunk.items():
+                        if node_name == "format" and isinstance(output, dict):
+                            docs = output.get("retrieved_docs") or []
+                            if docs:
+                                retrieved_docs = docs
             yield "data: [DONE]\n\n"
 
             # 流结束后把问答写入数据库
@@ -125,6 +148,15 @@ async def chat(
                     req.question,
                     assistant_text,
                 )
+                # 旁路写评估日志（采样率控制，用户无感知，失败静默）
+                if EVAL_LOG_ENABLED and retrieved_docs and random.random() < EVAL_SAMPLE_RATE:
+                    await asyncio.to_thread(
+                        write_eval_log,
+                        req.question,
+                        assistant_text,
+                        retrieved_docs,
+                        conversation_id,
+                    )
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
 

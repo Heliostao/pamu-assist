@@ -19,11 +19,9 @@ DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME", "deepseek-chat")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
-# ── Chroma 向量数据库（持久化模式，存储在项目根目录下）──
-CHROMA_PERSIST_DIR = os.getenv(
-    "CHROMA_PERSIST_DIR",
-    os.path.join(PROJECT_ROOT, "chroma_data"),
-)
+# ── Chroma 向量数据库（HTTP 模式，连接 Docker 中的 Chroma Server）──
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "gamelore_rag")
 
 # ── Embedding 模型（本地路径或 HuggingFace repo id） ──
@@ -43,6 +41,12 @@ RAG_CACHE_TTL = int(os.getenv("RAG_CACHE_TTL", "86400"))
 
 # ── 短期记忆：每次问答注入会话的历史消息条数 ──
 RAG_HISTORY_LIMIT = int(os.getenv("RAG_HISTORY_LIMIT", "8"))
+
+# ── RAG 评估日志（在线侧落盘，离线 RAGAS 脚本消费）──
+EVAL_LOG_ENABLED = os.getenv("EVAL_LOG_ENABLED", "true").lower() == "true"
+EVAL_LOG_DIR = os.getenv("EVAL_LOG_DIR", os.path.join(PROJECT_ROOT, "eval_data"))
+# 日志采样率 0~1，评估成本控制时可调小
+EVAL_SAMPLE_RATE = float(os.getenv("EVAL_SAMPLE_RATE", "1.0"))
 
 # ── 认证与登录 ──
 SECRET_KEY = os.getenv("SECRET_KEY", "pamu-assist-jwt-secret-change-me")

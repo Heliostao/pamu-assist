@@ -4,6 +4,8 @@ __pycache__
 .git
 .gitignore
 .env
+chroma_data
+src/static
 venv
 .venv
 images

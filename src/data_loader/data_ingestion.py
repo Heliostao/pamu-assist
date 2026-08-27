@@ -2,14 +2,18 @@
 数据入库入口（角色 + 术语）：加载 → 分割 → 向量化 → Chroma
 用法: python data_ingestion.py
 """
+from pathlib import Path
+
 from src.data_loader.document_loader import DocumentLoader
 from src.data_loader.document_splitter import DocumentSplitter
 from src.data_loader.document_index import DocumentIndex
 from src.data_loader.term_loader import load_term_documents
 from src.models.chroma import vectorstore
+from src.util.config import PROJECT_ROOT
 
-CHAR_DIR = "../../data/character/"
-TERM_DIR = "../../data/term/"
+ROOT = Path(PROJECT_ROOT)
+CHAR_DIR = str(ROOT / "data" / "character")
+TERM_DIR = str(ROOT / "data" / "term")
 
 # 0. 调试阶段全量清空
 ids = vectorstore.get()["ids"]

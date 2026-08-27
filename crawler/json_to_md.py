@@ -378,14 +378,30 @@ def gen_skills(char: dict, skill_data: dict, maps: dict) -> str:
         skills.append((SKILL_TYPE_ORDER.get(stype, 99), s))
     skills.sort(key=lambda x: x[0])
 
-    # 去重：同名技能只保留第一个（黄泉的终结技子技能在JSON中有多个重复条目）
+    # 去重：同名技能只保留官网完整版（simple_desc 最长者，同长度取 id 最大）。
+    # StarRailRes 中部分角色存在同技能的多个条目：新旧两版（如花火 130607/1130607、
+    # 藿藿 121704/1121704、黑天鹅 130701/1130701）或强化普攻分段（如乱破 131708/131710/131712）。
+    # 实测官网当前文本 = 描述最完整（simple_desc 最长）的条目；旧版与"第3段"等子条目
+    # 文本更短，会被自然淘汰。完全相同的重复条目取 id 最大的一个。
+    # 注意：黄泉终结技子技能（啼泽雨斩/黄泉返渡）name 不同，不参与同名去重。
+    # 此逻辑必须与 scripts/gen_testset.py 的 build_skill_questions 保持一致，
+    # 否则测试集 ground_truth 会与 md 文本错位。
     seen_names = set()
     deduped = []
     for order, s in skills:
-        name = s.get("name", "")
-        if name not in seen_names:
-            seen_names.add(name)
-            deduped.append((order, s))
+        key = (s.get("type", ""), s.get("name", ""))
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        candidates = [x for x in skills if (x[1].get("type", ""), x[1].get("name", "")) == key]
+        best = max(
+            candidates,
+            key=lambda x: (
+                len(x[1].get("simple_desc", "") or ""),
+                int(x[1].get("id", "0") or 0),
+            ),
+        )
+        deduped.append(best)
     skills = deduped
 
     type_labels = {

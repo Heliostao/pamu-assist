@@ -1,0 +1,87 @@
+# Docker Compose 编排：pamu-assist 应用 + Chroma 向量库 + PostgreSQL + Redis
+# 用法：
+#   1. 先停掉旧的手动 docker run 容器，避免端口冲突：
+#      docker rm -f pamu-postgres my-redis chroma_gamelore
+#   2. 首次启动：docker compose up --build
+#   3. 重启/停止：docker compose restart / docker compose down
+#   4. 向量数据需重灌：python src/data_loader/data_ingestion.py（见 README）
+name: pamu-assist
+
+services:
+  # ── Chroma 向量数据库（HTTP 模式，替代原本地 chroma_data/ 目录）──
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: pamu-chroma
+    ports:
+      - "8082:8000"          # 宿主机 8082 → 容器 8000，本地开发连 localhost:8082
+    volumes:
+      - chroma_data:/chroma/chroma   # 数据卷持久化，容器重建不丢向量库
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ── PostgreSQL（用户/会话/消息）──
+  postgres:
+    image: postgres:16
+    container_name: pamu-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: pamu
+      POSTGRES_PASSWORD: "050425"
+      POSTGRES_DB: pamu
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pamu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Redis（验证码缓存 + RAG 检索结果缓存）──
+  redis:
+    image: redis:8.4.0
+    container_name: pamu-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── pamu-assist 应用（Dockerfile 构建）──
+  app:
+    build: .
+    container_name: pamu-app
+    ports:
+      - "426:426"
+    env_file:
+      - .env
+    environment:
+      # 容器内通过服务名互相访问，覆盖 .env 中的 localhost 值
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      REDIS_HOST: redis
+      DATABASE_URL: postgresql+psycopg2://pamu:050425@postgres:5432/pamu
+    depends_on:
+      chroma:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  chroma_data:
+  pg_data:
+  redis_data:
