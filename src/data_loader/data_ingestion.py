@@ -1,5 +1,5 @@
 """
-数据入库入口（角色 + 术语）：加载 → 分割 → 向量化 → Chroma
+数据入库入口（角色 + 术语）：加载 → 分割 → 向量化入库 Chroma
 用法: python data_ingestion.py
 """
 from pathlib import Path
@@ -41,8 +41,8 @@ splitter = DocumentSplitter(docs=all_docs)
 chunks = splitter.split()
 print(f"  分割后: {len(chunks)} 个文本块")
 
-# 4. 入库
+# 4. 入库（Chroma）
 print("[4/4] 向量化 & 写入 Chroma...")
 index = DocumentIndex(chunks=chunks, vectorstore=vectorstore)
 index.add_documents()
-print(f"  入库完成: {len(vectorstore.get()['ids'])} 条")
+print(f"  Chroma 入库完成: {len(vectorstore.get()['ids'])} 条")

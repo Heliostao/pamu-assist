@@ -1,7 +1,7 @@
 """
 RAG 检索工具
 
-将"向量召回 + CrossEncoder 重排"封装为单一 LangChain Tool，
+将"向量召回 → CrossEncoder 重排"封装为单一 LangChain Tool，
 供 LangGraph Agentic RAG 工作流的检索节点调用。
 
 - 返回结构化 JSON 数组（doc_id / source / doc_type / score / content），
@@ -12,41 +12,18 @@ RAG 检索工具
 import hashlib
 import json
 
-from langchain_classic.retrievers import ContextualCompressionRetriever
-from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_core.documents import Document
 from langchain_core.tools import tool
 
 from src.auth.redis_client import get_client
-from src.models.chroma import vectorstore
-from src.util.config import (
-    RAG_CACHE_ENABLED,
-    RAG_CACHE_TTL,
-    RERANKER_MODEL_DIR,
-    RERANK_TOP_N,
-    RETRIEVAL_SCORE_THRESHOLD,
-    RETRIEVAL_TOP_K,
-)
+from src.reranker import reranker
+from src.retriever import compression_retriever
+from src.retriever.vector_retriever import vector_retriever
+from src.util.config import RAG_CACHE_ENABLED, RAG_CACHE_TTL
 
-_cross_encoder = HuggingFaceCrossEncoder(
-    model_name=RERANKER_MODEL_DIR,
-    model_kwargs={"device": "cpu"},
-)
-
-_reranker = CrossEncoderReranker(
-    model=_cross_encoder,
-    top_n=RERANK_TOP_N,
-)
-
-_base_retriever = vectorstore.as_retriever(
-    search_type="similarity_score_threshold",
-    search_kwargs={"k": RETRIEVAL_TOP_K, "score_threshold": RETRIEVAL_SCORE_THRESHOLD},
-)
-
-_compression_retriever = ContextualCompressionRetriever(
-    base_compressor=_reranker,
-    base_retriever=_base_retriever,
-)
+# 兼容阶段 0 评估脚本（scripts/eval_ragas.py 引用 _compression_retriever）：
+# 向量召回 + 重排即"压缩检索"链路
+_compression_retriever = compression_retriever
 
 
 def build_search_query(query: str, character_name: str = "") -> str:
@@ -120,3 +97,23 @@ def retrieve_knowledge(query: str, character_name: str = "") -> str:
     result = _format_docs(docs)
     _set_cache(search_query, result)
     return result
+
+
+def retrieve_sub_queries(sub_queries: list[str], rerank_query: str) -> str:
+    """多 query 合并检索：各子 query 独立向量召回 → 按内容去重合并 → 统一重排。
+
+    供 optimize 节点（split / both 路径）使用，避免每个子问题各自重排的重复开销。
+    返回与 retrieve_knowledge 一致的 JSON 数组字符串；子查询为低频路径，不做 Redis 缓存。
+    """
+    seen: dict[str, Document] = {}
+    for q in sub_queries:
+        # 每个子 query 召回前 5 条候选，控制合并后总量（文档 4.4：各取 topK）
+        for doc in vector_retriever.invoke(q)[:5]:
+            seen.setdefault(doc.page_content.strip(), doc)
+    if not seen:
+        return "[]"
+    reranked = reranker.compress_documents(
+        documents=list(seen.values()),
+        query=rerank_query,
+    )
+    return _format_docs(reranked)

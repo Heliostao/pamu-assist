@@ -1,0 +1,38 @@
+"""
+format 节点：解析 ToolMessage 中的结构化检索结果，写入全局状态。
+
+仅普通路径（tools → format）使用；优化路径由 optimize 节点直接写 retrieved_docs。
+"""
+import json
+
+from langchain_core.messages import AIMessage, ToolMessage
+
+from src.graph.state import RagState
+from src.tools.rag_tool import build_search_query
+
+
+def format_docs(state: RagState) -> dict:
+    retrieval_query = ""
+    retrieved_docs = []
+
+    for msg in state["messages"]:
+        if isinstance(msg, AIMessage):
+            # 从工具调用参数还原实际检索词（兼作缓存 key 的记录）
+            for tc in getattr(msg, "tool_calls", []) or []:
+                if tc.get("name") == "retrieve_knowledge":
+                    args = tc.get("args", {})
+                    retrieval_query = build_search_query(
+                        args.get("query", ""), args.get("character_name", "")
+                    )
+        elif isinstance(msg, ToolMessage):
+            try:
+                parsed = json.loads(msg.content)
+                if isinstance(parsed, list):
+                    retrieved_docs.extend(parsed)
+            except json.JSONDecodeError:
+                pass
+
+    return {
+        "retrieved_docs": retrieved_docs,
+        "retrieval_query": retrieval_query,
+    }

@@ -7,7 +7,8 @@ from typing import List
 from langchain_core.documents import Document
 
 
-def _stable_id(chunk: Document) -> str:
+def stable_id(chunk: Document) -> str:
+    """基于 source + 内容生成稳定唯一 id（Chroma 入库 id）。"""
     source = chunk.metadata.get("source", "")
     return hashlib.md5(f"{source}:{chunk.page_content}".encode()).hexdigest()
 
@@ -27,5 +28,5 @@ class DocumentIndex:
 
         self.vectorstore.add_documents(
             self.chunks,
-            ids=[_stable_id(c) for c in self.chunks],
+            ids=[stable_id(c) for c in self.chunks],
         )

@@ -1,4 +1,4 @@
-# 帕姆帮帮 · 崩坏:星穹铁道 AI 助手（V2.3）
+# 帕姆帮帮 · 崩坏:星穹铁道 AI 助手（V2.4）
 
 基于 Agentic RAG 的崩坏:星穹铁道知识助手。登录后向列车长帕姆提问，即可获得游戏角色、机制、术语相关的流式回答。
 
@@ -8,7 +8,12 @@
 
 ## 版本更新
 
-> **V2.3（当前）** — 短期记忆与登录/对话交互优化：
+> **V2.4（当前）** — 新增 RAG 评估与 RAG 查询优化：
+> - 支持口语化问答与一次性问多个问题，减少无效检索、提升答案相关性
+> - 检索与优化工具统一交由 ToolNode 执行，收敛手写执行逻辑，链路更清晰
+> - 新增离线 RAG 评估
+
+> **V2.3** — 短期记忆与登录/对话交互优化：
 > - 新增短期记忆：帕姆可在单个对话内记住上下文，支持"她/他"等指代与连续追问
 > - 优化登录问题：服务重启后旧登录态自动失效，重新进入需重新登录
 > - 修复连续点击"新建对话"会创建多个空会话的 bug（后端幂等 + 前端守卫）
@@ -42,15 +47,18 @@
 
 ![聊天界面](images/聊天界面.png)
 
-
+IR评估
+![评估指标.png](images/%E8%AF%84%E4%BC%B0%E6%8C%87%E6%A0%87.png)
 
 
 ## 核心特性
 
 - **Agentic RAG**：LLM 自主判断是否需要检索，检索结果经相关性评估后再生成，不相关时兜底回答，降低幻觉
+- **查询优化**：口语化、带指代的提问自动改写（rewrite）为规范检索词；一次问多个独立子问题时自动拆分（split）、分别检索后合并，减少无效检索
 - **帕姆人设**：全程以列车长帕姆的口吻应答
 - **流式输出**：SSE 逐字推送，首字即出
 - **短期记忆**：单对话内携带最近多轮上下文，支持指代词与连续追问
+- **RAG 评估**：离线测试集跑 MRR / Recall@K / Precision@K / nDCG@K 并输出雷达图；在线检索日志自动落盘供复盘
 - **账号体系**：账号密码 / 邮箱验证码双登录，JWT 鉴权，历史会话按用户隔离
 
 ## 系统架构
@@ -70,13 +78,20 @@ graph TB
     subgraph Agent 层
         API -->|astream| LG[LangGraph]
         LG --> CH[chatbot 节点<br/>LLM 决策 + 工具调用]
-        CH -->|tool_call| TN[ToolNode 检索]
-        TN --> GD[grade 节点<br/>相关性评估 → 生成/兜底]
+        CH -->|无 tool_call| E1((结束·直接回复))
+        CH -->|tool_call| TN[ToolNode 统一执行]
+        TN -->|retrieve_knowledge| FMT[format 节点<br/>解析检索结果]
+        TN -->|optimize_plan| OPT[optimize 节点<br/>rewrite / split + 检索]
+        FMT --> GD[grade 节点<br/>相关性评估 → 生成/兜底]
+        OPT --> GD
+        GD --> E2((结束))
     end
 
     subgraph 检索管线
-        TN --> VS[(Chroma 向量库)]
-        VS -.-> BGE[BGE embedding + reranker 本地模型]
+        VS[(Chroma 向量库)] -->|BGE 向量召回 top10| RR[bge-reranker 精排 top3]
+        FMT -.-> VS
+        OPT -.-> VS
+        RR -.->|Redis 缓存命中<br/>跳过召回与重排| RD2[(Redis 检索缓存)]
     end
 
     subgraph 存储层
@@ -86,7 +101,7 @@ graph TB
     end
 ```
 
-工作流：LLM 决策 →（需要时）向量检索 top 8 + CrossEncoder 重排 top 5 → 相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
+工作流：LLM 决策 →（需要时）工具执行。常规问题走 `retrieve_knowledge`：向量召回 top 10 → CrossEncoder 重排 top 3，结果缓存 Redis；口语化 / 一次多问题走 `optimize_plan` 查询优化：rewrite 结合多轮历史改写查询词，split 拆出子问题分别召回后合并重排 → grade 节点相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
 
 ## 技术选型
 
@@ -112,13 +127,17 @@ pamu_assist/
 │   ├── api/                 # REST 接口：auth（认证）、conversations（会话）
 │   ├── auth/                # JWT/bcrypt、SMTP 发信、Redis 验证码
 │   ├── database/            # SQLAlchemy 模型 + PostgreSQL
-│   ├── graph/               # LangGraph Agentic RAG 工作流
+│   ├── graph/               # LangGraph 工作流：chatbot / tools / format / optimize / grade 节点 + 路由
 │   ├── models/              # DeepSeek LLM、Chroma + BGE
-│   ├── tools/               # 检索工具（向量检索 + 重排）
-│   ├── prompts/             # 帕姆人设 / 相关性评估 Prompt
+│   ├── tools/               # 检索工具 retrieve_knowledge、查询优化工具 optimize_plan
+│   ├── retriever/           # 向量召回（vector）+ 压缩检索（召回→重排组装）
+│   ├── reranker/            # bge-reranker CrossEncoder 精排
+│   ├── prompts/             # 帕姆人设 / 相关性评估 / 查询改写 / 问题拆分 Prompt
 │   ├── data_loader/         # 知识入库（加载/切分/索引）
 │   ├── util/                # .env 配置
 │   └── static/              # 前端构建产物
+├── scripts/                 # 离线评估：gen_testset（生成测试集）、eval_ragas（IR 指标 + 雷达图）
+├── eval_data/               # 测试集与在线检索日志
 ├── data/                    # Wiki 原始数据
 ├── chroma_data/             # Chroma 持久化向量库
 ├── crawler/                 # Wiki JSON → Markdown

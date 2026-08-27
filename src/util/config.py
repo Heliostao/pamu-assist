@@ -31,9 +31,9 @@ EMBEDDING_MODEL_DIR = os.getenv("EMBEDDING_MODEL_DIR", "BAAI/bge-base-zh-v1.5")
 RERANKER_MODEL_DIR = os.getenv("RERANKER_MODEL_DIR", "BAAI/bge-reranker-base")
 
 # ── RAG 检索参数（向量召回 + 重排） ──
-RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "8"))
+RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 RETRIEVAL_SCORE_THRESHOLD = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.35"))
-RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
+RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "3"))
 
 # ── RAG 检索结果缓存（Redis，命中跳过向量检索与重排） ──
 RAG_CACHE_ENABLED = os.getenv("RAG_CACHE_ENABLED", "true").lower() == "true"
