@@ -4,10 +4,6 @@ optimize_plan 真实工具：判断并执行查询优化，输出结构化检索
 由 ToolNode 统一执行：工具内完成 rewrite（结合多轮历史消解指代）与 split（拆分
 子问题），返回 {"optimization_type", "retrieval_query", "sub_queries"}，
 ToolNode 自动生成对应 ToolMessage，optimize 节点解析该 JSON 并执行检索。
-
-通过 InjectedState 注入当前图状态拿到多轮历史，rewrite 时消解"她/他/这个角色"
-等指代；工具执行时注入的 state 最后一条是本轮的 AIMessage(tool_calls)，
-它尚未被 ToolMessage 响应，直接喂给 LLM 会 400，改写前先去掉。
 """
 import json
 from typing import Annotated
@@ -35,7 +31,6 @@ def _rewrite(messages: list) -> str:
 
 
 def _parse_json_array(text: str) -> list[str]:
-    """鲁棒解析 LLM 输出的 JSON 数组：容忍 ```json 包裹与首尾杂质。"""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned[3:]
@@ -85,8 +80,6 @@ def optimize_plan(
             - "both"：既口语化/带指代、又含多个子问题，先改写再拆分。
     """
     messages = list(state["messages"])
-    # 工具执行时注入的 state 最后一条是本轮 AIMessage(tool_calls=[optimize_plan])，
-    # 它还没有对应的 ToolMessage，不能直接喂给 LLM（会 400），改写前先去掉。
     if messages and isinstance(messages[-1], AIMessage) and messages[-1].tool_calls:
         messages = messages[:-1]
 

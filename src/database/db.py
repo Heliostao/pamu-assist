@@ -22,7 +22,7 @@ def get_db():
 
 
 def init_db():
-    """建表（幂等）、轻量迁移（补充新列）、确保默认账号存在。"""
+    """建表"""
     from sqlalchemy import inspect, text
 
     from src.auth.security import hash_password
@@ -31,7 +31,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
 
-    # 已存在的 users 表补充 username 列（轻量迁移，避免删库重建）
+    # 已存在的 users 表补充 username 列
     insp = inspect(engine)
     if "users" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("users")}

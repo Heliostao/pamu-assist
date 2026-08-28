@@ -14,7 +14,7 @@ from src.tools.rag_tool import retrieve_knowledge, retrieve_sub_queries
 
 
 def optimize(state: RagState) -> dict:
-    # ToolNode 已自动生成 ToolMessage，读最后一条即可；异常路径回退扫描
+    # ToolNode 已自动生成 ToolMessage
     tool_msg = state["messages"][-1]
     if not isinstance(tool_msg, ToolMessage):
         for msg in reversed(state["messages"]):

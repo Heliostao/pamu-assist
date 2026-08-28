@@ -1,4 +1,4 @@
-// Token 与用户信息的会话缓存（关闭浏览器后自动失效）
+// Token 与用户信息的会话缓存
 const TOKEN_KEY = 'pamu_token'
 const USER_KEY = 'pamu_user'
 

@@ -1,13 +1,6 @@
 """
 RAG 检索工具
 
-将"向量召回 → CrossEncoder 重排"封装为单一 LangChain Tool，
-供 LangGraph Agentic RAG 工作流的检索节点调用。
-
-- 返回结构化 JSON 数组（doc_id / source / doc_type / score / content），
-  由工作流节点解析后写入全局状态，供评估节点与响应溯源使用；
-- 检索结果按规范化 query 缓存到 Redis（命中直接跳过向量检索与重排，
-  重排是链路中最耗时的一步，收益最大）。
 """
 import hashlib
 import json
@@ -32,34 +25,34 @@ def build_search_query(query: str, character_name: str = "") -> str:
     return " ".join(parts)
 
 
-def _normalize(s: str) -> str:
+def normalize(s: str) -> str:
     """规范化缓存 key：去首尾空白、折叠连续空白、统一小写。"""
     return " ".join(s.split()).lower()
 
 
-def _cache_key(search_query: str) -> str:
-    return f"rag:{_normalize(search_query)}"
+def cache_key(search_query: str) -> str:
+    return f"rag:{normalize(search_query)}"
 
 
-def _get_cache(search_query: str) -> str | None:
+def get_cache(search_query: str) -> str | None:
     if not RAG_CACHE_ENABLED:
         return None
     try:
-        return get_client().get(_cache_key(search_query))
+        return get_client().get(cache_key(search_query))
     except Exception:
         return None
 
 
-def _set_cache(search_query: str, value: str) -> None:
+def set_cache(search_query: str, value: str) -> None:
     if not RAG_CACHE_ENABLED:
         return
     try:
-        get_client().setex(_cache_key(search_query), RAG_CACHE_TTL, value)
+        get_client().setex(cache_key(search_query), RAG_CACHE_TTL, value)
     except Exception:
         pass
 
 
-def _format_docs(docs) -> str:
+def format_docs(docs) -> str:
     """把重排后的文档格式化为结构化 JSON 数组。"""
     items = []
     for doc in docs:
@@ -89,13 +82,13 @@ def retrieve_knowledge(query: str, character_name: str = "") -> str:
     """
     search_query = build_search_query(query, character_name)
 
-    cached = _get_cache(search_query)
+    cached = get_cache(search_query)
     if cached is not None:
         return cached
 
     docs = _compression_retriever.invoke(search_query)
-    result = _format_docs(docs)
-    _set_cache(search_query, result)
+    result = format_docs(docs)
+    set_cache(search_query, result)
     return result
 
 
@@ -116,4 +109,4 @@ def retrieve_sub_queries(sub_queries: list[str], rerank_query: str) -> str:
         documents=list(seen.values()),
         query=rerank_query,
     )
-    return _format_docs(reranked)
+    return format_docs(reranked)

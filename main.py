@@ -30,28 +30,30 @@ from src.database.models import User
 from src.util.config import EVAL_LOG_ENABLED, EVAL_SAMPLE_RATE, RAG_HISTORY_LIMIT
 from src.util.eval_log import write_eval_log
 
-graph = None  # LangGraph 编译对象，lifespan 启动时注入
+# 全局
+graph = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global graph
+    # 事件循环
     loop = asyncio.get_running_loop()
     print("正在初始化数据库...")
     await loop.run_in_executor(None, init_db)
     print("正在加载知识库与模型...")
-    graph = await loop.run_in_executor(None, _load_graph)
+    graph = await loop.run_in_executor(None, load_graph)
     print("启动完成 → http://localhost:426/static/index.html")
     yield
 
 
-def _load_graph():
+def load_graph():
     from src.graph.Agentic_RAG import graph as g
 
     return g
 
 
-def _load_history(db, conversation_id: int) -> list:
+def load_history(db, conversation_id: int) -> list:
     """短期记忆：加载会话最近的 N 条历史消息，构造为消息对象序列。"""
     rows = (
         db.query(DbMessage)
@@ -78,7 +80,7 @@ app.include_router(conv_api.router)
 
 @app.get("/")
 async def index():
-    """根路径直接返回前端页面（Vue 构建产物）。"""
+
     return FileResponse("src/static/index.html")
 
 
@@ -116,7 +118,7 @@ async def chat(
             collected.append(t)
 
         # 短期记忆：注入该会话最近的历史消息（与当前问题组成多轮上下文）
-        history = await asyncio.to_thread(_load_history, db, conversation_id)
+        history = await asyncio.to_thread(load_history, db, conversation_id)
 
         try:
             async for mode, chunk in graph.astream(  # type: ignore[union-attr]
@@ -148,7 +150,7 @@ async def chat(
                     req.question,
                     assistant_text,
                 )
-                # 旁路写评估日志（采样率控制，用户无感知，失败静默）
+                # 评估日志
                 if EVAL_LOG_ENABLED and retrieved_docs and random.random() < EVAL_SAMPLE_RATE:
                     await asyncio.to_thread(
                         write_eval_log,

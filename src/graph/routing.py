@@ -1,8 +1,7 @@
 """
-自定义条件边：tool_call 统一进 ToolNode，再按 ToolMessage.name 分流。
+自定义条件边：tool_call 统一进 ToolNode
 
-langgraph 内置 tools_condition 只区分"有无 tool_call"，无法区分工具执行后的结果
-由哪个节点解析，故拆成两层路由：
+
 1. route_after_chatbot：有 tool_call 一律进 tools（ToolNode 统一执行），否则 END；
 2. route_after_tools：按 ToolMessage.name 决定解析节点（format / optimize / END）。
 """
@@ -28,6 +27,4 @@ def route_after_tools(state: RagState) -> str:
                 return "format"
             if msg.name == "optimize_plan":
                 return "optimize"
-            # 未知工具名：保守结束（chatbot 已给出回复）
-            return END
     return END
