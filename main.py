@@ -54,7 +54,7 @@ def load_graph():
 
 
 def load_history(db, conversation_id: int) -> list:
-    """短期记忆：加载会话最近的 N 条历史消息，构造为消息对象序列。"""
+    """短期记忆：加载会话最近的 8 条历史消息，构造为消息对象序列。"""
     rows = (
         db.query(DbMessage)
         .filter(DbMessage.conversation_id == conversation_id)

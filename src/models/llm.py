@@ -1,5 +1,5 @@
 """
-DeepSeek 大模型实例
+DeepSeek LLM
 """
 from langchain_openai import ChatOpenAI
 

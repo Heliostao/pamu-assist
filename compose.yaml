@@ -44,7 +44,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Redis（验证码缓存 + RAG 检索结果缓存）──
+  # ── Redis（仅用于验证码存取）──
   redis:
     image: redis:8.4.0
     container_name: pamu-redis

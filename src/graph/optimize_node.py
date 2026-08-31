@@ -1,16 +1,18 @@
 """
 optimize 节点：解析 optimize_plan 工具结果（ToolMessage），执行检索并写 retrieved_docs。
 
-与普通路径（tools → format）不同：split/both 走 retrieve_sub_queries 合并检索。
-工具的真实执行（rewrite / split）已由 ToolNode 完成，本节点只负责解析 JSON 与检索，
-tool_call_id 的配对、ToolMessage 的生成全部交给 ToolNode，不再手搓。
 """
 import json
 
 from langchain_core.messages import ToolMessage
 
 from src.graph.state import RagState
-from src.tools.rag_tool import retrieve_knowledge, retrieve_sub_queries
+from src.tools.rag_tool import (
+    detect_character,
+    extract_character,
+    retrieve_knowledge,
+    retrieve_sub_queries,
+)
 
 
 def optimize(state: RagState) -> dict:
@@ -31,19 +33,32 @@ def optimize(state: RagState) -> dict:
     retrieval_query = str(plan.get("retrieval_query", ""))
     sub_queries = plan.get("sub_queries") or []
 
+    # 实体锁定：query 已含已知角色名则用之（A→B 切换时跟随用户），
+    # 否则回退会话当前角色（防 rewrite 漏写角色名导致检索漂移）
+    character = state.get("character") or ""
+    locked = detect_character(retrieval_query, character)
+
     if sub_queries:
         result_json = retrieve_sub_queries(sub_queries, retrieval_query)
     else:
-        result_json = retrieve_knowledge.invoke({"query": retrieval_query})
+        args: dict = {"query": retrieval_query}
+        if locked:
+            args["character_name"] = locked
+        result_json = retrieve_knowledge.invoke(args)
 
     try:
         docs = json.loads(result_json) if result_json else []
     except json.JSONDecodeError:
         docs = []
 
-    return {
+    updates = {
         "retrieval_query": retrieval_query,
         "optimization_type": str(plan.get("optimization_type", "")),
         "sub_queries": sub_queries,
         "retrieved_docs": docs,
     }
+    # 从文档来源反推角色名，动态更新会话锁定的角色（无角色文档时保持原值）
+    new_character = extract_character(docs)
+    if new_character:
+        updates["character"] = new_character
+    return updates

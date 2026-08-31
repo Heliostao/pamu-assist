@@ -23,9 +23,14 @@ def _last_question(messages: list) -> str:
     return ""
 
 
-def _rewrite(messages: list) -> str:
-    """结合对话历史把口语化 / 带指代的提问改写为可检索 query。"""
-    prompt = [SystemMessage(content=REWRITE_PROMPT)] + messages[-8:]
+def _rewrite(messages: list, character: str = "") -> str:
+    """结合对话历史把口语化 / 带指代的提问改写为可检索 query。
+
+    注入当前会话锁定的角色，约束指代词指向，防止"她/他"漂移到其他角色。
+    """
+    prompt = [
+        SystemMessage(content=REWRITE_PROMPT.format(character=character or "未锁定"))
+    ] + messages[-8:]
     resp = llm.invoke(prompt)
     return (resp.content or "").strip()
 
@@ -84,8 +89,9 @@ def optimize_plan(
         messages = messages[:-1]
 
     question = _last_question(messages)
+    character = str(state.get("character") or "")
     if optimization_type in ("rewrite", "both"):
-        retrieval_query = _rewrite(messages) or question
+        retrieval_query = _rewrite(messages, character) or question
     else:
         retrieval_query = question
 

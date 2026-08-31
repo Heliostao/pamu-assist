@@ -1,8 +1,5 @@
 """
-Chroma 向量数据库（HTTP 模式，连接 Docker 中的 Chroma Server）+ Embedding 模型
-
-不再使用本地 chroma_data/ 目录，向量库由独立的 Chroma 服务（compose.yaml 中的
-chroma 服务）提供，数据持久化在该容器挂载的 chroma_data 数据卷中。
+Chroma
 """
 import chromadb
 from langchain_chroma import Chroma

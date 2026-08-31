@@ -38,5 +38,5 @@ def delete_code(email: str) -> None:
 
 
 def can_resend(email: str) -> bool:
-    """检查是否在 60s 冷却期内（key 存在即说明刚发过）。"""
+    """检查是否在 60s 冷却期内"""
     return get_client().ttl(f"vcode:{email}") < CODE_TTL_SECONDS - CODE_MIN_INTERVAL_SECONDS

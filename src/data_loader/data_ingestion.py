@@ -1,6 +1,5 @@
 """
-数据入库入口（角色 + 术语）：加载 → 分割 → 向量化入库 Chroma
-用法: python data_ingestion.py
+入chroma库
 """
 from pathlib import Path
 

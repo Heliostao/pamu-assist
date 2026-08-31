@@ -55,11 +55,8 @@ async def create_conversation(
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """新建会话。
-
-    幂等处理：若该用户已存在标题为"新对话"的空会话（未发送过任何消息，
-    发消息时 save_chat_messages 会改写标题），直接返回它，避免前端反复点击
-    "新建对话"产生一堆空会话。
+    """
+    新建会话
     """
     title = req.title.strip() or "新对话"
     if title == "新对话":

@@ -94,12 +94,12 @@ async def register(req: RegisterRequest, db=Depends(get_db)):
         .first()
         is not None
     ):
-        raise HTTPException(status_code=409, detail="账号已存在，请更换")
+        raise HTTPException(status_code=409, detail="账号已存在")
 
     # 邮箱唯一性：已绑定账号的邮箱不可重复注册
     exist = db.query(User).filter(User.email == email).first()
     if exist is not None and exist.username is not None:
-        raise HTTPException(status_code=409, detail="该邮箱已绑定账号，请直接登录")
+        raise HTTPException(status_code=409, detail="该邮箱已绑定账号")
 
     # 验证码校验（注册必须经过邮箱验证，防止恶意批量注册）
     saved = redis_client.get_code(email)
@@ -154,7 +154,7 @@ async def login_by_password(req: PasswordLoginRequest, db=Depends(get_db)):
         )
         .first()
     )
-    # 统一提示，避免暴露账号是否存在
+    # 统一提示
     if user is None or user.password_hash is None:
         raise HTTPException(status_code=400, detail="账号或密码错误")
     if not verify_password(req.password, user.password_hash):

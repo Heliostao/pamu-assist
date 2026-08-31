@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 from src.util.config import SMTP_HOST, SMTP_PASS, SMTP_PORT, SMTP_USER
 
 
-def send_vcode_email(to_email: str, code: str) -> None:
+def send_vcode_email(to_email: str, code: str):
     """发送 6 位验证码邮件（SSL 465）。"""
     subject = "帕姆小助手 - 登录验证码"
     body = (

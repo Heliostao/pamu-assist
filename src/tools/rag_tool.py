@@ -4,52 +4,51 @@ RAG 检索工具
 """
 import hashlib
 import json
+from pathlib import Path
 
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 
-from src.auth.redis_client import get_client
 from src.reranker import reranker
 from src.retriever import compression_retriever
 from src.retriever.vector_retriever import vector_retriever
-from src.util.config import RAG_CACHE_ENABLED, RAG_CACHE_TTL
+from src.util.config import PROJECT_ROOT
 
-# 兼容阶段 0 评估脚本（scripts/eval_ragas.py 引用 _compression_retriever）：
-# 向量召回 + 重排即"压缩检索"链路
 _compression_retriever = compression_retriever
+
+_CHAR_DIR = Path(PROJECT_ROOT) / "data" / "character"
+KNOWN_CHARACTERS = (
+    sorted(p.stem for p in _CHAR_DIR.glob("*.md")) if _CHAR_DIR.is_dir() else []
+)
 
 
 def build_search_query(query: str, character_name: str = "") -> str:
-    """拼装实际检索词（工具与工作流节点复用，保证检索与缓存 key 一致）。"""
+    """拼装实际检索词（工具与工作流节点复用）。"""
     parts = [p for p in (character_name.strip(), query.strip()) if p]
     return " ".join(parts)
 
 
-def normalize(s: str) -> str:
-    """规范化缓存 key：去首尾空白、折叠连续空白、统一小写。"""
-    return " ".join(s.split()).lower()
+def extract_character(docs: list[dict]) -> str:
+    """从检索文档反推角色名：取第一个 doc_type 为"角色数据"的 source（去掉 .md）。
+
+    返回空串表示本次文档不涉及角色（如纯术语问题），调用方应保持原 character 不变。
+    """
+    for d in docs or []:
+        if d.get("doc_type") == "角色数据":
+            source = str(d.get("source", "")).strip()
+            name = source[:-3] if source.endswith(".md") else source
+            if name:
+                return name
+    return ""
 
 
-def cache_key(search_query: str) -> str:
-    return f"rag:{normalize(search_query)}"
-
-
-def get_cache(search_query: str) -> str | None:
-    if not RAG_CACHE_ENABLED:
-        return None
-    try:
-        return get_client().get(cache_key(search_query))
-    except Exception:
-        return None
-
-
-def set_cache(search_query: str, value: str) -> None:
-    if not RAG_CACHE_ENABLED:
-        return
-    try:
-        get_client().setex(cache_key(search_query), RAG_CACHE_TTL, value)
-    except Exception:
-        pass
+def detect_character(query: str, fallback: str = "") -> str:
+    """实体锁定：若 query 中出现知识库已知角色名则返回该角色（处理 A→B 切换）；
+    否则回退到会话当前角色（防 rewrite 漏写角色名时检索漂移）。"""
+    for name in KNOWN_CHARACTERS:
+        if name and name in query:
+            return name
+    return fallback
 
 
 def format_docs(docs) -> str:
@@ -81,22 +80,15 @@ def retrieve_knowledge(query: str, character_name: str = "") -> str:
                         提供角色名可提升检索精度；非角色问题留空即可。
     """
     search_query = build_search_query(query, character_name)
-
-    cached = get_cache(search_query)
-    if cached is not None:
-        return cached
-
     docs = _compression_retriever.invoke(search_query)
-    result = format_docs(docs)
-    set_cache(search_query, result)
-    return result
+    return format_docs(docs)
 
 
 def retrieve_sub_queries(sub_queries: list[str], rerank_query: str) -> str:
     """多 query 合并检索：各子 query 独立向量召回 → 按内容去重合并 → 统一重排。
 
     供 optimize 节点（split / both 路径）使用，避免每个子问题各自重排的重复开销。
-    返回与 retrieve_knowledge 一致的 JSON 数组字符串；子查询为低频路径，不做 Redis 缓存。
+    返回与 retrieve_knowledge 一致的 JSON 数组字符串。
     """
     seen: dict[str, Document] = {}
     for q in sub_queries:

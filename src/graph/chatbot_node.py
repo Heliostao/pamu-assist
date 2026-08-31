@@ -18,9 +18,19 @@ llm_with_tools = llm.bind_tools([retrieve_knowledge, optimize_plan])
 
 
 def chatbot(state: RagState, writer: StreamWriter) -> dict:
+    # 动态注入会话锁定角色：指代消解与工具参数生成都以该角色为锚
+    system_content = SYSTEM_PROMPT
+    character = state.get("character") or ""
+    if character:
+        system_content += (
+            f"\n\n当前对话已锁定角色「{character}」：用户用指代词（她/他）提问时指代的就是该角色；"
+            f"调用 retrieve_knowledge 时应把 character_name 传为「{character}」，"
+            f"调用 optimize_plan 改写时应保持该角色不变。"
+        )
+
     chunks = []
     for chunk in llm_with_tools.stream(
-        [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
+        [SystemMessage(content=system_content)] + state["messages"]
     ):
         chunks.append(chunk)
         if getattr(chunk, "content", ""):

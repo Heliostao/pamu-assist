@@ -12,7 +12,7 @@ from src.graph.state import RagState
 
 
 def route_after_chatbot(state: RagState) -> str:
-    """chatbot 之后：有 tool_call 一律进 tools，否则结束。"""
+    """chatbot 之后：有 tool_call """
     last = state["messages"][-1]
     if not isinstance(last, AIMessage) or not last.tool_calls:
         return END
