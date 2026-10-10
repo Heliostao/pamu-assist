@@ -1,7 +1,7 @@
 """
 自定义条件边。
 
-1. route_after_router：router 之后按 route 分流（chat / rag）；
+1. route_after_router：router 之后按 route 分流（chatbot / tools / decision）；
 2. route_after_decision：decision 之后，有 tool_call 一律进 tools（ToolNode 统一执行），否则 END；
 3. route_after_tools：按 ToolMessage.name 决定解析节点（format / optimize / END）。
 """
@@ -12,8 +12,8 @@ from src.graph.state import RagState
 
 
 def route_after_router(state: RagState) -> str:
-    """router 之后：按 route 分流到 chat / rag。"""
-    return state.get("route") or "chat"
+    """router 之后：按 route 分流（chatbot / tools / decision）。"""
+    return state.get("route") or "decision"
 
 
 def route_after_decision(state: RagState) -> str:

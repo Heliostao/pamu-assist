@@ -6,13 +6,12 @@ Agentic RAG 工作流（纯组装层）
 optimize_node / grade_node，条件边路由见 routing。
 
 流程：
-START → router（Cloudflare Clef 二分：chat / rag）
-         ├─ chat → chatbot（帕姆人设闲聊回复）→ END
-         └─ rag  → decision（DeepSeek 判断直接检索 / 改写 / 拆分）
-              ├─ 无 tool_call → END（clef 误判为 rag 的闲聊，直接人设回复）
-              └─ 有 tool_call → tools（ToolNode 统一执行）
-                   ├─ retrieve_knowledge → format → grade → END
-                   └─ optimize_plan → optimize → grade → END
+START → router（Clef 三层决策：chat / rag → direct / optimize → rewrite / split / both）
+         ├─ chatbot（帕姆人设闲聊回复）→ END
+         ├─ tools（ToolNode 执行 router 合成的 tool_call）
+         │    ├─ retrieve_knowledge → format → grade → END
+         │    └─ optimize_plan → optimize → grade → END
+         └─ decision（DeepSeek 兜底：置信度低时完整决策）→ tools / END
 """
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
@@ -45,7 +44,7 @@ builder.add_edge(START, "router")
 builder.add_conditional_edges(
     "router",
     routing.route_after_router,
-    {"chat": "chatbot", "rag": "decision"},
+    {"chatbot": "chatbot", "tools": "tools", "decision": "decision"},
 )
 builder.add_edge("chatbot", END)
 builder.add_conditional_edges(

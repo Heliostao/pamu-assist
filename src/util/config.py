@@ -72,5 +72,5 @@ DATABASE_URL = os.getenv(
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
 CLOUDFLARE_CLEF_MODEL = os.getenv("CLOUDFLARE_CLEF_MODEL", "@cf/cloudflare/clef")
-# 意图路由阈值：P(需要检索) >= 该值判为 rag，否则判为 chat
-ROUTER_RAG_THRESHOLD = float(os.getenv("ROUTER_RAG_THRESHOLD", "0.5"))
+# 意图路由置信度阈值：clef 三层决策中，某层置信度低于该值则兜底到 DeepSeek
+ROUTER_CONFIDENCE_THRESHOLD = float(os.getenv("ROUTER_CONFIDENCE_THRESHOLD", "0.3"))

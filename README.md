@@ -5,7 +5,12 @@
 
 ## 版本更新
 
-> **V2.5（当前）** — 意图路由接入决策模型：
+> **V2.6（当前）** — 优化意图决策逻辑为三层：
+> - Clef 决策模型升级为三层决策（一次调用）：是否检索 → 是否优化 → 怎么优化
+> - 层级短路：chat 直接回复、direct 直接检索，均不再看后续层；低置信层兜底到 DeepSeek
+> - 确认检索时前端即时显示"让帕姆找找帕！"过渡提示
+
+> **V2.5** — 意图路由接入决策模型：
 > - 引入 Cloudflare Clef 决策模型做意图二分类（判定是否需要检索），替代大模型自主判断，输出带置信度、更可控
 > - 工作流重构为「二分路由 + 二次决策」：clef 先判定 chat / rag，rag 再进入检索决策（直接检索 / 改写 / 拆分）
 > - Chroma 升级至最新版本
@@ -53,7 +58,7 @@ IR评估
 
 ## 核心特性
 
-- **决策模型意图路由**：用 Cloudflare Clef 决策模型做意图二分类（是否需要检索），替代大模型自主判断，输出带置信度、降低首跳延迟
+- **决策模型意图路由**：用 Cloudflare Clef 决策模型做三层意图决策（是否检索 / 是否优化 / 怎么优化），一次调用、层级短路，输出带置信度、低置信兜底
 - **Agentic RAG**：检索结果经相关性评估后再生成，不相关时兜底回答，降低幻觉
 - **查询优化**：口语化、带指代的提问自动改写（rewrite）为规范检索词；一次问多个独立子问题时自动拆分（split）、分别检索后合并，减少无效检索
 - **帕姆人设**：全程以列车长帕姆的口吻应答
@@ -78,12 +83,13 @@ graph TB
 
     subgraph Agent 层
         API -->|astream| LG[LangGraph]
-        LG --> RT[router 节点<br/>Clef 决策模型二分 chat/rag]
+        LG --> RT[router 节点<br/>Clef 三层决策]
         RT -->|chat| CB[chatbot 节点<br/>帕姆人设闲聊回复]
         CB --> E1((结束·直接回复))
-        RT -->|rag| DC[decision 节点<br/>LLM 二次决策 + 工具调用]
+        RT -->|direct / optimize<br/>合成 tool_call| TN[ToolNode 统一执行]
+        RT -->|低置信| DC[decision 节点<br/>DeepSeek 兜底决策]
         DC -->|无 tool_call| E1
-        DC -->|tool_call| TN[ToolNode 统一执行]
+        DC -->|tool_call| TN
         TN -->|retrieve_knowledge| FMT[format 节点<br/>解析检索结果]
         TN -->|optimize_plan| OPT[optimize 节点<br/>rewrite / split + 检索]
         FMT --> GD[grade 节点<br/>相关性评估 → 生成/兜底]
@@ -106,7 +112,7 @@ graph TB
     end
 ```
 
-工作流：Clef 决策模型先做意图二分类（是否需要检索）→ chat 直接人设闲聊回复；rag 进入 DeepSeek 二次决策 →（需要时）工具执行。常规问题走 `retrieve_knowledge`：向量召回 top 10 → CrossEncoder 重排 top 3，结果缓存 Redis；口语化 / 一次多问题走 `optimize_plan` 查询优化：rewrite 结合多轮历史改写查询词，split 拆出子问题分别召回后合并重排 → grade 节点相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
+工作流：Clef 决策模型一次调用做三层决策（是否检索 → 是否优化 → 怎么优化），层级短路——chat 直接人设闲聊，direct 直接检索，optimize 再判 rewrite / split / both；某层置信度低则兜底到 DeepSeek 决策。常规问题走 `retrieve_knowledge`：向量召回 top 10 → CrossEncoder 重排 top 3，结果缓存 Redis；口语化 / 一次多问题走 `optimize_plan` 查询优化：rewrite 结合多轮历史改写查询词，split 拆出子问题分别召回后合并重排 → grade 节点相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
 
 ## 技术选型
 
@@ -120,7 +126,7 @@ graph TB
 | 业务存储 | PostgreSQL | 用户、会话、消息持久化 |
 | 向量库 | Chroma（最新版） | HTTP Client 模式连接 Docker 中的 Chroma Server |
 | Embedding / 重排 | BGE base-zh / reranker | 中文语义本地推理，零调用成本 |
-| 决策模型 | Cloudflare Clef | 意图二分类（是否需要检索），输出带置信度 |
+| 决策模型 | Cloudflare Clef | 意图三层决策（是否检索 / 是否优化 / 怎么优化），输出带置信度 |
 | 大模型 | DeepSeek | 中文能力强、支持 function calling |
 
 ## 项目结构
