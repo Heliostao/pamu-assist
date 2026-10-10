@@ -1,7 +1,6 @@
 """
 format 节点：解析 ToolMessage 中的结构化检索结果，写入全局状态。
 
-仅普通路径（tools → format）
 """
 import json
 

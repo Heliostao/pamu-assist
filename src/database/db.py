@@ -42,7 +42,7 @@ def init_db():
                     text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)")
                 )
 
-    # 确保默认账号存在（账号密码登录，账号密码由 .env 配置）
+    # 确保默认账号存在
     with SessionLocal() as db:
         if db.query(models.User).filter(models.User.username == DEFAULT_USERNAME).first() is None:
             db.add(

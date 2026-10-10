@@ -1,4 +1,4 @@
-# 帕姆帮帮 · 崩坏:星穹铁道 AI 助手（V2.4）
+# 帕姆帮帮 · 崩坏:星穹铁道 AI 助手（V2.5）
 
 基于 Agentic RAG 的崩坏:星穹铁道知识助手。登录后向列车长帕姆提问，即可获得游戏角色、机制、术语相关的流式回答。
 
@@ -8,7 +8,12 @@
 
 ## 版本更新
 
-> **V2.4（当前）** — 新增 RAG 评估与 RAG 查询优化：
+> **V2.5（当前）** — 意图路由接入决策模型：
+> - 引入 Cloudflare Clef 决策模型做意图二分类（判定是否需要检索），替代大模型自主判断，输出带置信度、更可控
+> - 工作流重构为「二分路由 + 二次决策」：clef 先判定 chat / rag，rag 再进入检索决策（直接检索 / 改写 / 拆分）
+> - Chroma 升级至最新版本
+
+> **V2.4** — 新增 RAG 评估与 RAG 查询优化：
 > - 支持口语化问答与一次性问多个问题，减少无效检索、提升答案相关性
 > - 检索与优化工具统一交由 ToolNode 执行，收敛手写执行逻辑，链路更清晰
 > - 新增离线 RAG 评估
@@ -51,7 +56,8 @@ IR评估
 
 ## 核心特性
 
-- **Agentic RAG**：LLM 自主判断是否需要检索，检索结果经相关性评估后再生成，不相关时兜底回答，降低幻觉
+- **决策模型意图路由**：用 Cloudflare Clef 决策模型做意图二分类（是否需要检索），替代大模型自主判断，输出带置信度、降低首跳延迟
+- **Agentic RAG**：检索结果经相关性评估后再生成，不相关时兜底回答，降低幻觉
 - **查询优化**：口语化、带指代的提问自动改写（rewrite）为规范检索词；一次问多个独立子问题时自动拆分（split）、分别检索后合并，减少无效检索
 - **帕姆人设**：全程以列车长帕姆的口吻应答
 - **流式输出**：SSE 逐字推送，首字即出
@@ -75,9 +81,12 @@ graph TB
 
     subgraph Agent 层
         API -->|astream| LG[LangGraph]
-        LG --> CH[chatbot 节点<br/>LLM 决策 + 工具调用]
-        CH -->|无 tool_call| E1((结束·直接回复))
-        CH -->|tool_call| TN[ToolNode 统一执行]
+        LG --> RT[router 节点<br/>Clef 决策模型二分 chat/rag]
+        RT -->|chat| CB[chatbot 节点<br/>帕姆人设闲聊回复]
+        CB --> E1((结束·直接回复))
+        RT -->|rag| DC[decision 节点<br/>LLM 二次决策 + 工具调用]
+        DC -->|无 tool_call| E1
+        DC -->|tool_call| TN[ToolNode 统一执行]
         TN -->|retrieve_knowledge| FMT[format 节点<br/>解析检索结果]
         TN -->|optimize_plan| OPT[optimize 节点<br/>rewrite / split + 检索]
         FMT --> GD[grade 节点<br/>相关性评估 → 生成/兜底]
@@ -95,11 +104,12 @@ graph TB
     subgraph 存储层
         AUTH --> RD[(Redis 验证码)]
         API --> PG[(PostgreSQL<br/>用户 / 会话 / 消息)]
-        CH --> DS[DeepSeek API]
+        RT --> CF[Cloudflare Clef 决策模型]
+        DC --> DS[DeepSeek API]
     end
 ```
 
-工作流：LLM 决策 →（需要时）工具执行。常规问题走 `retrieve_knowledge`：向量召回 top 10 → CrossEncoder 重排 top 3，结果缓存 Redis；口语化 / 一次多问题走 `optimize_plan` 查询优化：rewrite 结合多轮历史改写查询词，split 拆出子问题分别召回后合并重排 → grade 节点相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
+工作流：Clef 决策模型先做意图二分类（是否需要检索）→ chat 直接人设闲聊回复；rag 进入 DeepSeek 二次决策 →（需要时）工具执行。常规问题走 `retrieve_knowledge`：向量召回 top 10 → CrossEncoder 重排 top 3，结果缓存 Redis；口语化 / 一次多问题走 `optimize_plan` 查询优化：rewrite 结合多轮历史改写查询词，split 拆出子问题分别召回后合并重排 → grade 节点相关性评估 → 生成帕姆风格回答；无工具调用或检索不相关时直接回答 / 兜底。
 
 ## 技术选型
 
@@ -111,8 +121,9 @@ graph TB
 | 认证 | JWT + bcrypt | 无状态鉴权，密码哈希存储 |
 | 验证码 | SMTP + Redis | QQ 邮箱发信，Redis 存码（5 分钟过期 + 60s 冷却） |
 | 业务存储 | PostgreSQL | 用户、会话、消息持久化 |
-| 向量库 | Chroma（持久化） | 嵌入式运行，无需独立服务 |
+| 向量库 | Chroma（最新版） | HTTP Client 模式连接 Docker 中的 Chroma Server |
 | Embedding / 重排 | BGE base-zh / reranker | 中文语义本地推理，零调用成本 |
+| 决策模型 | Cloudflare Clef | 意图二分类（是否需要检索），输出带置信度 |
 | 大模型 | DeepSeek | 中文能力强、支持 function calling |
 
 ## 项目结构
@@ -125,8 +136,8 @@ pamu_assist/
 │   ├── api/                 # REST 接口：auth（认证）、conversations（会话）
 │   ├── auth/                # JWT/bcrypt、SMTP 发信、Redis 验证码
 │   ├── database/            # SQLAlchemy 模型 + PostgreSQL
-│   ├── graph/               # LangGraph 工作流：chatbot / tools / format / optimize / grade 节点 + 路由
-│   ├── models/              # DeepSeek LLM、Chroma + BGE
+│   ├── graph/               # LangGraph 工作流：router / chatbot / decision / tools / format / optimize / grade 节点 + 路由
+│   ├── models/              # DeepSeek LLM、Cloudflare Clef 决策模型、Chroma + BGE
 │   ├── tools/               # 检索工具 retrieve_knowledge、查询优化工具 optimize_plan
 │   ├── retriever/           # 向量召回（vector）+ 压缩检索（召回→重排组装）
 │   ├── reranker/            # bge-reranker CrossEncoder 精排

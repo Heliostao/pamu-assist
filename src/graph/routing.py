@@ -1,9 +1,9 @@
 """
-自定义条件边：tool_call 统一进 ToolNode
+自定义条件边。
 
-
-1. route_after_chatbot：有 tool_call 一律进 tools（ToolNode 统一执行），否则 END；
-2. route_after_tools：按 ToolMessage.name 决定解析节点（format / optimize / END）。
+1. route_after_router：router 之后按 route 分流（chat / rag）；
+2. route_after_decision：decision 之后，有 tool_call 一律进 tools（ToolNode 统一执行），否则 END；
+3. route_after_tools：按 ToolMessage.name 决定解析节点（format / optimize / END）。
 """
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.constants import END
@@ -11,8 +11,13 @@ from langgraph.constants import END
 from src.graph.state import RagState
 
 
-def route_after_chatbot(state: RagState) -> str:
-    """chatbot 之后：有 tool_call """
+def route_after_router(state: RagState) -> str:
+    """router 之后：按 route 分流到 chat / rag。"""
+    return state.get("route") or "chat"
+
+
+def route_after_decision(state: RagState) -> str:
+    """decision 之后：有 tool_call 一律进 tools，否则 END。"""
     last = state["messages"][-1]
     if not isinstance(last, AIMessage) or not last.tool_calls:
         return END

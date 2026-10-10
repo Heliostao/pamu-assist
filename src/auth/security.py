@@ -38,7 +38,7 @@ def create_token(user_id: int, email: str) -> str:
 
 
 def decode_token(token: str) -> dict:
-    """校验并解析 token，非法/过期/跨服务实例（后端重启）抛 401。"""
+    """校验并解析 token"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
@@ -60,7 +60,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db=Depends(get_db),
 ) -> User:
-    """FastAPI 依赖：从 Authorization 头解析 token 并返回用户，失败抛 401。"""
+    """FastAPI 依赖：从 Authorization 头解析 token 并返回用户"""
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

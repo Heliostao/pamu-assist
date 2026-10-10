@@ -109,7 +109,7 @@ async def list_messages(
 
 
 def save_chat_messages(db, conversation_id: int, user_id: int, user_text: str, assistant_text: str) -> None:
-    """保存一轮问答消息并更新会话时间（供 /chat 调用）。"""
+    """保存一轮问答消息并更新"""
     conv = db.get(Conversation, conversation_id)
     if conv is None or conv.user_id != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")

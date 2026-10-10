@@ -57,7 +57,7 @@ def optimize(state: RagState) -> dict:
         "sub_queries": sub_queries,
         "retrieved_docs": docs,
     }
-    # 从文档来源反推角色名，动态更新会话锁定的角色（无角色文档时保持原值）
+    # 从文档来源反推角色名，并动态更新
     new_character = extract_character(docs)
     if new_character:
         updates["character"] = new_character

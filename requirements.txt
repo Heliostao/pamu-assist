@@ -16,3 +16,4 @@ redis==8.1.0
 SQLAlchemy==2.0.52
 uvicorn==0.52.4
 matplotlib>=3.9.0
+httpx>=0.27.0

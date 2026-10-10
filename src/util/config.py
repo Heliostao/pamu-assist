@@ -17,10 +17,10 @@ DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME", "deepseek-chat")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
-# Chroma 向量数据库（HTTP 模式，连接 Docker 中的 Chroma Server）
+# Chroma 向量数据库
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
-CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "gamelore_rag")
+CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "pamu-chroma")
 
 # ── Embedding 模型（本地路径或 HuggingFace repo id） ──
 EMBEDDING_MODEL_DIR = os.getenv("EMBEDDING_MODEL_DIR", "BAAI/bge-base-zh-v1.5")
@@ -67,3 +67,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg2://pamu:050425@localhost:5433/pamu",
 )
+
+# ── Cloudflare Clef 决策模型（意图路由）──
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
+CLOUDFLARE_CLEF_MODEL = os.getenv("CLOUDFLARE_CLEF_MODEL", "@cf/cloudflare/clef")
+# 意图路由阈值：P(需要检索) >= 该值判为 rag，否则判为 chat
+ROUTER_RAG_THRESHOLD = float(os.getenv("ROUTER_RAG_THRESHOLD", "0.5"))

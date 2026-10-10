@@ -18,7 +18,7 @@ def grade(state: RagState, writer: StreamWriter) -> dict:
             question = msg.content
             break
 
-    # 从全局状态取检索结果（而非解析 ToolMessage）
+    # 从全局状态取检索结果
     docs = state.get("retrieved_docs") or []
     context = "\n\n".join(
         f"[{d.get('doc_type', '角色数据')}] {d.get('content', '')}" for d in docs
